@@ -40,3 +40,16 @@ cmake 3.28.3, ninja 1.11.1, Python 3.12.3, uv 0.13.7, git (Ubuntu 24.04 package)
 are actually linked. FetchContent `URL_HASH` makes dependency downloads tamper-evident.
 
 **Next:** Push to https://github.com/Ayushmaan06/Finforge and get CI green; then fresh-clone check and summary.md.
+
+## 2026-11-13 — GitHub, CI green
+**Done:** `gh` 2.45.0 installed; logged in as Ayushmaan06 via device code (scopes include `workflow`,
+needed to push `.github/workflows/`). Pushed `main` to the private repo Ayushmaan06/Finforge.
+CI run 43480045951: all 5 jobs green on first run (release gcc, dev+sanitizers gcc and clang, Python,
+lint). Fresh local clone passes both exit-criteria commands. Bumped `actions/checkout` v4 → v7 and
+`astral-sh/setup-uv` v6 → v10.3.3 (Node 20 deprecation warnings). summary.md written.
+**Problems:** `gh auth login` failed in the user's terminal with `gzip: stdin: not in gzip format` — the
+browser hand-off from WSL has no opener (`BROWSER` unset, no `wslview`/`xdg-open`). Fix: device-code flow
+with `BROWSER=true`, code entered manually at github.com/login/device.
+**Learned:** Pushing workflow files needs the `workflow` OAuth scope. setup-uv no longer has a `v10`
+floating tag, so it must be pinned to an exact version.
+**Next:** User reviews contracts.md §12 refinements; then start Phase 1 (`.planning/phases/01-order-book/plan.md`).

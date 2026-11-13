@@ -18,14 +18,14 @@ code. (PLAN.md §6, Phase 0.)
 - [x] 4. CI: Release build + tests; Debug ASan/UBSan (gcc + clang) + tests; pytest; clang-format + ruff
 - [x] 5. `docs/contracts.md` from PLAN §5, every rule testable
 - [x] 6. Test plan: invariants per component (contracts.md §14, plus a Test: line per rule)
-- [ ] 7. Push to GitHub, CI green on all jobs
-- [ ] 8. Fresh-clone check in WSL2, then `summary.md`
+- [x] 7. Push to GitHub, CI green on all jobs
+- [x] 8. Fresh-clone check in WSL2, then `summary.md`
 
 ## Exit criteria
-- [ ] On a fresh clone in WSL2, `cmake --preset dev && ctest` and `uv pip install -e . && pytest` both pass.
-- [ ] CI is green on all jobs, including the sanitizer job.
-- [ ] `docs/contracts.md` covers every item in §5.
-- [ ] `.planning/phases/00-foundations/summary.md` is written.
+- [x] On a fresh clone in WSL2, `cmake --preset dev && ctest` and `uv pip install -e . && pytest` both pass.
+- [x] CI is green on all jobs, including the sanitizer job.
+- [x] `docs/contracts.md` covers every item in §5.
+- [x] `.planning/phases/00-foundations/summary.md` is written.
 
 ## Open questions / risks
 - GitHub repo access from WSL (no `gh`, no SSH key yet).
