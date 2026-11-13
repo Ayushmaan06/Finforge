@@ -1,0 +1,45 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "finforge"
+version = "0.1.0"
+description = "Market simulation and research platform: C++20 engine, Python research layer."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff==0.17.5",  # keep in sync with .github/workflows/ci.yml
+]
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+build-dir = "build/python/{wheel_tag}"
+cmake.version = ">=3.28"
+cmake.build-type = "Release"
+ninja.make-fallback = false
+wheel.packages = ["python/finforge"]
+sdist.exclude = ["datasets/", ".planning/", "temp/", "build/"]
+
+[tool.scikit-build.cmake.define]
+FINFORGE_BUILD_PYTHON = "ON"
+FINFORGE_BUILD_TESTS = "OFF"
+
+[tool.pytest.ini_options]
+testpaths = ["python/tests"]
+addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["python"]
+extend-exclude = ["temp", "build", "datasets"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]

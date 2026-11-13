@@ -1,0 +1,7 @@
+#pragma once
+
+namespace finforge::build_info {
+inline constexpr const char* kVersion = "@PROJECT_VERSION@";
+inline constexpr const char* kGitSha = "@FINFORGE_GIT_SHA@";
+inline constexpr const char* kBuildType = "@CMAKE_BUILD_TYPE@";
+}  // namespace finforge::build_info

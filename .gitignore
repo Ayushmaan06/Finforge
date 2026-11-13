@@ -1,0 +1,28 @@
+# Build
+build/
+_skbuild/
+*.so
+*.o
+*.a
+compile_commands.json
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+dist/
+
+# Data: raw downloads never go in git (PLAN.md D5). Fixtures do.
+datasets/*
+!datasets/fixtures/
+!datasets/README.md
+
+# Local scratch
+temp/
+.vscode/
+.idea/
+.DS_Store
