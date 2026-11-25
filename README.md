@@ -5,7 +5,7 @@ simulation, accounting) driven by Python strategies, with analytics, an API and 
 
 Priorities, in order: **correctness → determinism → reproducibility → clarity → performance → features.**
 
-> Status: Phase 1 (order book and matching engine). [`docs/contracts.md`](docs/contracts.md) has the
+> Status: Phase 2 (event engine and exchange simulation). [`docs/contracts.md`](docs/contracts.md) has the
 > rules the engine obeys; [`docs/benchmarks.md`](docs/benchmarks.md) has the performance baseline.
 
 ## Requirements
@@ -40,6 +40,17 @@ build/release/engine/finforge-sim engine/apps/demo/orders.csv
 Script lines: `ts,owner,side,type,tif,price,qty` (e.g. `1,7,BUY,LIMIT,GTC,100,5`; MARKET price
 empty), `cancel,id`, or `amend,id,new_qty,new_price`. The expected output is kept as a golden file,
 `engine/apps/demo/expected.txt`, and checked by `ctest`.
+
+### Synthetic multi-agent simulation (Mode B)
+
+```bash
+build/release/engine/finforge-sim --synthetic --seed 42 --events 1000000 [--agents 8] \
+    [--latency-ns 1000] [--journal run.ffj]
+```
+
+Poisson-arrival agents trade on one book through the discrete-event simulator. The output ends
+with the journal's SHA-256, the run fingerprint: the same seed gives the same hash in every build
+(`docs/contracts.md` §10).
 
 ## Benchmarks
 

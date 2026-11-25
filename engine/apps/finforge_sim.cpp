@@ -1,6 +1,10 @@
-// finforge-sim: Mode B order-script runner (Demo 2).
+// finforge-sim: Mode B order-script runner (Demo 2) and synthetic multi-agent simulation.
 //
-// Reads an order script (a file argument, or stdin) for one instrument with tick = lot = 1:
+//   finforge-sim [orders.csv]
+//   finforge-sim --synthetic [--seed N] [--events N] [--agents N] [--latency-ns N] [--journal FILE]
+//
+// Script mode reads an order script (a file argument, or stdin) for one instrument with tick = lot
+// = 1:
 //   ts,owner,side,type,tif,price,qty      e.g. 1,7,BUY,LIMIT,GTC,100,5   (MARKET price: 0 or empty)
 //   cancel,id
 //   amend,id,new_qty,new_price
@@ -20,6 +24,7 @@
 #include <vector>
 
 #include "finforge/matching_engine.hpp"
+#include "finforge/synthetic.hpp"
 
 using namespace finforge;
 
@@ -171,11 +176,89 @@ int run(std::istream& in, std::ostream& out) {
     return 0;
 }
 
+constexpr const char* kUsage =
+    "usage: finforge-sim [orders.csv]            (reads stdin when no file is given)\n"
+    "       finforge-sim --synthetic [--seed N] [--events N] [--agents N] [--latency-ns N]\n"
+    "                    [--journal FILE]\n";
+
+std::string_view status_name(RunStatus s) {
+    switch (s) {
+        case RunStatus::Completed:
+            return "COMPLETED";
+        case RunStatus::ReachedTime:
+            return "REACHED_TIME";
+        case RunStatus::ReachedEventLimit:
+            return "REACHED_EVENT_LIMIT";
+        case RunStatus::Cancelled:
+            return "CANCELLED";
+    }
+    return "?";
+}
+
+int run_synthetic_cli(int argc, char** argv) {
+    SyntheticRunConfig cfg;
+    std::string journal_path;
+    for (int i = 2; i < argc; ++i) {
+        const std::string_view a = argv[i];
+        if (i + 1 >= argc) {
+            std::cerr << "finforge-sim: missing value for " << a << '\n' << kUsage;
+            return 2;
+        }
+        const std::string_view v = argv[++i];
+        std::optional<std::uint64_t> n = parse_int<std::uint64_t>(v);
+        if (a == "--journal") {
+            journal_path = std::string(v);
+            continue;
+        }
+        if (!n) {
+            std::cerr << "finforge-sim: bad number for " << a << ": " << v << '\n';
+            return 2;
+        }
+        if (a == "--seed") {
+            cfg.seed = *n;
+        } else if (a == "--events") {
+            cfg.max_events = *n;
+        } else if (a == "--agents" && *n >= 1) {
+            cfg.agents = *n;
+        } else if (a == "--latency-ns" && *n >= 1) {
+            cfg.latency_ns = static_cast<std::int64_t>(*n);
+        } else {
+            std::cerr << "finforge-sim: bad option " << a << ' ' << v << '\n' << kUsage;
+            return 2;
+        }
+    }
+    std::ofstream journal;
+    if (!journal_path.empty()) {
+        journal.open(journal_path, std::ios::binary);
+        if (!journal) {
+            std::cerr << "finforge-sim: cannot write " << journal_path << '\n';
+            return 2;
+        }
+        cfg.journal_sink = &journal;
+    }
+    const SyntheticRunResult r = run_synthetic(cfg);
+    std::cout << "status          " << status_name(r.status) << '\n'
+              << "seed            " << cfg.seed << '\n'
+              << "agents          " << cfg.agents << '\n'
+              << "events          " << r.events << '\n'
+              << "orders          " << r.orders << '\n'
+              << "trades          " << r.trades << '\n'
+              << "open orders     " << r.open_orders << '\n'
+              << "sim end time    " << r.end_time.value() << " ns\n"
+              << "best bid / ask  " << (r.best_bid ? std::to_string(r.best_bid->value()) : "-")
+              << " / " << (r.best_ask ? std::to_string(r.best_ask->value()) : "-") << '\n'
+              << "journal records " << r.journal_records << " (" << r.journal_bytes << " bytes)\n"
+              << "journal sha256  " << r.journal_sha256 << '\n';
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc > 2) {
-        std::cerr << "usage: finforge-sim [orders.csv]   (reads stdin when no file is given)\n";
+    if (argc >= 2 && std::string_view(argv[1]) == "--synthetic")
+        return run_synthetic_cli(argc, argv);
+    if (argc > 2 || (argc == 2 && argv[1][0] == '-')) {
+        std::cerr << kUsage;
         return 2;
     }
     if (argc == 2) {

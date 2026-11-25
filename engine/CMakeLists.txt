@@ -1,10 +1,16 @@
 configure_file(src/build_info.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/generated/finforge/build_info.hpp @ONLY)
 
 add_library(finforge_engine STATIC
+  src/events.cpp
   src/instrument.cpp
+  src/journal.cpp
   src/matching_engine.cpp
   src/order.cpp
   src/order_book.cpp
+  src/rng.cpp
+  src/sha256.cpp
+  src/simulator.cpp
+  src/synthetic.cpp
   src/version.cpp
 )
 add_library(finforge::engine ALIAS finforge_engine)
@@ -34,9 +40,13 @@ if(FINFORGE_BUILD_TESTS)
 
   add_executable(finforge_engine_tests
     tests/differential_test.cpp
+    tests/event_queue_test.cpp
     tests/instrument_test.cpp
     tests/matching_engine_test.cpp
     tests/order_test.cpp
+    tests/rng_test.cpp
+    tests/sha256_test.cpp
+    tests/simulator_test.cpp
     tests/types_test.cpp
     tests/version_test.cpp)
   target_link_libraries(finforge_engine_tests PRIVATE finforge::engine GTest::gtest_main)
