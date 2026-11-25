@@ -25,9 +25,10 @@ From Python:
 
 ```python
 from finforge.backtest import run
+
 result = run("examples/ma_cross.yaml")
 result.status, result.journal_hash, result.reconciles
-fills = result.read("fills").to_pandas()   # if pandas is installed
+fills = result.read("fills").to_pandas()  # if pandas is installed
 ```
 
 The CLI exits with 0 on success, 1 for a configuration or data error, and 3 when the strategy
@@ -38,12 +39,14 @@ failed.
 ```python
 from finforge.sdk import Strategy
 
+
 class Breakout(Strategy):
     """Buy a new 20-bar high, exit below the 20-bar low."""
+
     name = "breakout"
     defaults = {"n": 20, "qty": "0.01"}
 
-    def setup(self):                      # validate self.params
+    def setup(self):  # validate self.params
         if int(self.params["n"]) < 2:
             raise ValueError("n must be >= 2")
 
