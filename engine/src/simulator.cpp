@@ -23,7 +23,9 @@ class Simulator::StrategyContext final : public Context {
 
     std::uint64_t submit(const OrderRequest& r) override {
         const std::uint64_t ref = sim_.next_client_ref_++;
-        NewOrder o{owner_, r.instrument, r.side, r.type, r.tif, r.price, r.qty, Timestamp{}};
+        NewOrder o{
+            owner_,  r.instrument, r.side,      r.type,   r.tif,
+            r.price, r.qty,        Timestamp{}, sim_.now_};  // sent now; arrives at now + latency
         sim_.push(arrival(), r.instrument, SubmitAction{owner_, ref, o});
         return ref;
     }
@@ -42,6 +44,10 @@ class Simulator::StrategyContext final : public Context {
     }
 
     const OrderBook* book(InstrumentId id) const override { return sim_.model_.book(id); }
+
+    const Ledger* account() const override {
+        return sim_.accounts_ != nullptr ? sim_.accounts_->ledger(owner_) : nullptr;
+    }
 
   private:
     // EVT-3: everything a strategy does reaches the exchange `latency` later.
@@ -88,6 +94,24 @@ void Simulator::attach_source(MarketDataSource& source) {
     source_ = &source;
 }
 
+void Simulator::attach_accounts(Accounts& accounts) {
+    if (started_) throw std::logic_error("attach_accounts after the run started");
+    if (accounts_ != nullptr) throw std::logic_error("accounts are already attached");
+    if (model_.account_hooks() != &accounts) {
+        throw std::invalid_argument("accounts belong to a different execution model");
+    }
+    accounts_ = &accounts;
+}
+
+void Simulator::finish() {
+    if (finished_) throw std::logic_error("finish() called twice");
+    start_if_needed();
+    finished_ = true;
+    model_.cancel_all(CancelReason::EndOfRun);  // OP-3
+    deliver(model_.events());
+    if (accounts_ != nullptr) accounts_->finish(now_);
+}
+
 void Simulator::pull_source() {
     MarketData md;
     if (!source_->next(md)) return;
@@ -105,6 +129,7 @@ void Simulator::pull_source() {
 }
 
 void Simulator::push(Timestamp ts, InstrumentId instrument, Event event) {
+    if (finished_) return;  // the run is over
     const EventKey key = queue_.push(ts, instrument, std::move(event));
     // EVT-4: an event handler may only schedule events after itself.
     FINFORGE_CHECK(!processing_ || key > current_key_,
@@ -174,6 +199,7 @@ void Simulator::process(QueuedEvent ev) {
     current_key_ = ev.key;
     now_ = ev.key.ts;
     processing_ = true;
+    if (accounts_ != nullptr) accounts_->advance(now_);  // ACC-8 borrow, interval snapshots
     // Queue the next source event before handling this one, so a snapshot at this time still sees
     // a non-empty queue and keeps the run going.
     if (source_queued_ && ev.key == source_key_) {
@@ -228,7 +254,8 @@ void Simulator::process(QueuedEvent ev) {
                        if (!own_order(a.owner, a.order)) {
                            return refuse(a.owner, a.order, RejectReason::UnknownOrder);
                        }
-                       const ActionResult r = model_.amend(a.order, a.qty, a.price, now_);
+                       const Timestamp sent{now_.value() - config_.latency_ns};
+                       const ActionResult r = model_.amend(a.order, a.qty, a.price, now_, sent);
                        if (!r.ok()) return refuse(a.owner, a.order, r.reason);
                        if (r.new_order.value() != 0) {
                            // The replacement keeps the strategy's client reference.
@@ -249,6 +276,7 @@ void Simulator::process(QueuedEvent ev) {
                        const MarketData data{md};
                        model_.on_market_data(data);
                        deliver(model_.events());
+                       if (accounts_ != nullptr) accounts_->after_market_data(data, now_);
                        for (std::size_t i = 0; i < strategies_.size(); ++i) {
                            strategies_[i]->on_market_data(*contexts_[i], data);
                        }

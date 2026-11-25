@@ -47,7 +47,11 @@ enum class CancelReason : std::uint8_t {
     FokUnfillable,
     MarketRemainder,
     EndOfRun,
+    InsufficientCashAtFill,  // OP-1: a buy reduced to what the account can pay at fill time
 };
+
+// Fee side of a fill (FEE-1, BKM-1): resting fills are maker, aggressor and Mode A fills taker.
+enum class Liquidity : std::uint8_t { Maker, Taker };
 
 std::string_view to_string(Side);
 std::string_view to_string(OrderType);
@@ -81,8 +85,9 @@ struct Order {
     Qty qty;
     Qty filled;
     Qty remaining;
-    Qty cancelled;  // ORD-8: filled + remaining + cancelled == qty
-    Timestamp submit_ts;
+    Qty cancelled;        // ORD-8: filled + remaining + cancelled == qty
+    Timestamp submit_ts;  // arrival at the execution model
+    Timestamp sent_ts;    // the strategy's clock when it sent the order (CND-1)
 
     // Intrusive FIFO links inside a price level; OrderId{0} = none. Owned by OrderBook.
     OrderId prev;

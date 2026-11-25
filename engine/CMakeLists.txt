@@ -1,11 +1,14 @@
 configure_file(src/build_info.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/generated/finforge/build_info.hpp @ONLY)
 
 add_library(finforge_engine STATIC
+  src/accounts.cpp
   src/events.cpp
+  src/execution_model.cpp
   src/instrument.cpp
   src/journal.cpp
   src/replay.cpp
   src/matching_engine.cpp
+  src/mode_a.cpp
   src/order.cpp
   src/order_book.cpp
   src/rng.cpp
@@ -40,10 +43,13 @@ if(FINFORGE_BUILD_TESTS)
   FetchContent_MakeAvailable(googletest)
 
   add_executable(finforge_engine_tests
+    tests/accounts_test.cpp
+    tests/backtest_test.cpp
     tests/differential_test.cpp
     tests/event_queue_test.cpp
     tests/instrument_test.cpp
     tests/matching_engine_test.cpp
+    tests/mode_a_test.cpp
     tests/order_test.cpp
     tests/replay_test.cpp
     tests/rng_test.cpp

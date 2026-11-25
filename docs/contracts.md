@@ -115,8 +115,8 @@ Fields: `id`, `owner_id`, `instrument_id`, `side` {BUY, SELL}, `type` {MARKET, L
   `UNKNOWN_INSTRUMENT`, `INSUFFICIENT_CASH`, `POSITION_LIMIT`, `LEVERAGE_LIMIT`, `SHORT_NOT_ALLOWED`,
   `UNKNOWN_ORDER`, `ALREADY_TERMINAL`.
 - **ORD-5** Cancel reasons are exactly: `USER`, `IOC_REMAINDER`, `FOK_UNFILLABLE`, `MARKET_REMAINDER`,
-  `END_OF_RUN`. **(refinement)** — §5.4 named the first three; the last two make every cancellation
-  traceable.
+  `END_OF_RUN`, `INSUFFICIENT_CASH_AT_FILL`. **(refinement)** — §5.4 named the first three; the others
+  make every cancellation traceable (`INSUFFICIENT_CASH_AT_FILL`: OP-1, Phase 4).
   **Test:** each reason produced by a unit test (Phases 1, 4).
 - **ORD-6** MARKET orders have no price; a MARKET order with a price is rejected `INVALID_PRICE`.
   MARKET orders never rest: in every model their unfilled remainder is cancelled `MARKET_REMAINDER`.
@@ -178,9 +178,13 @@ its parameters.
 
 ### 7.1 CandleModel (bars)
 
-- **CND-1** An order arriving during bar *t* (i.e. after `close_time(t-1)`, up to `close_time(t)`) is
-  first eligible on the next bar to close after its arrival. With default latency, an order submitted on
-  bar *t*'s close event is first eligible on bar *t+1*.
+- **CND-1** An order is eligible on bar *b* iff `open_time(b) ≥ sent_ts`, where `sent_ts` is the
+  strategy's clock when it sent the order (arrival is `sent_ts + latency`). An order submitted on bar
+  *t*'s close event is first eligible on bar *t+1*; one sent mid-bar (from a timer) on the bar after
+  next. **(refinement, Phase 4:** the earlier wording keyed eligibility to the *arrival* time, which with
+  latency ≥ 1 ns lands just after `close_time(t)` and contradicted its own example. Keying it to the send
+  time keeps the intended "decide at t's close, fill at t+1's open" and never fills an order at a price
+  from before the strategy decided.)
 - **CND-2** MARKET: fills at `open[t+1]` adjusted by slippage (§8), for the full quantity unless the
   volume cap (CND-5) applies.
 - **CND-3** LIMIT BUY fills if `low[t+1] < limit` (strict trade-through). Fill price
@@ -210,6 +214,9 @@ its parameters.
 ### 7.3 BookModel
 
 - **BKM-1** Delegates to the order book (§5). Aggressor fills pay taker fees, resting fills pay maker fees.
+  A LIMIT buy is checked at its limit, which is a true worst case because book fills happen at resting
+  prices no worse than the limit. A MARKET buy is checked at the mark (the book mid). There is no
+  fill-time cap (OP-1) in Mode B.
 
 **Tests (Phase 4):** a hand-computed golden case per rule, including the boundary cases
 `low == limit` (no fill) and `ask == limit` (fill).
@@ -255,7 +262,11 @@ instead of an average price keeps everything exact.)
   instrument → tick/lot → qty > 0 → cash for buys (`cash − reserved_cash ≥` order notional + fee at
   the reference price) → position limit → `allow_short` → gross leverage after the order
   `Σ|market_value| / equity ≤ max_leverage` (default 1.0). For MARKET orders the reference price is
-  the current mark adjusted by the configured slippage.
+  the current mark adjusted by the configured slippage. **(refinement, Phase 4:** position limit,
+  short and leverage checks use the *projected* position: position + the remaining quantity of the
+  account's open orders + this order; leverage divides by equity minus the estimated fee. A MARKET
+  order with no mark yet is checked at price 0 and capped at fill time (OP-1). The checks apply to
+  amend replacements too. Owners without an account are not checked.)
 - **ACC-10 (reconciliation)** After every fill (debug builds) and at the end of every run:
   `equity == initial_cash + realised_pnl + unrealised_pnl − total_fees − borrow_costs`, exactly.
 - **ACC-11 (replay)** Replaying the fill ledger from scratch reproduces final cash, positions and cost
@@ -369,14 +380,17 @@ PLAN.md §15 v1.2.
 | TIME-6 | Unit detected from non-overlapping plausible ranges; first usable value fixes the file's unit — Phase 3 |
 | EVT-2 | Merge key `(emit time, instrument_id, feed, row)`; feeds of one instrument: bars < quotes < trades — Phase 3 |
 | VER-1 | Dataset id hashes the logical content, not Parquet bytes — Phase 3 |
+| CND-1 | Eligibility keyed to the send time: `open_time(b) ≥ sent_ts` — Phase 4 |
+| ORD-5 | New cancel reason `INSUFFICIENT_CASH_AT_FILL` (OP-1) — Phase 4 |
+| ACC-9 | Projected position (incl. open orders) for limit/short/leverage; amend replacements checked — Phase 4 |
 
 ## 13. Open points (decide by the phase shown)
 
 | # | Question | Proposed default | Decide by |
 |---|---|---|---|
-| OP-1 | A MARKET buy passes the pre-trade cash check at the reference price, but fills at a worse price than cash allows. | Reduce the fill to the affordable whole lots; cancel the rest with a new reason `INSUFFICIENT_CASH_AT_FILL`. | Phase 4 |
+| OP-1 | A MARKET buy passes the pre-trade cash check at the reference price, but fills at a worse price than cash allows. | **Decided (Phase 4):** in the Candle and Quote models, any buy is cut to the whole lots that `cash − other reservations` pays for, fee included; the rest is cancelled `INSUFFICIENT_CASH_AT_FILL` (a FOK order is cancelled whole). | Phase 4 |
 | OP-2 | Journal byte format (field order, endianness) for DET-1. | **Decided (Phase 2):** little-endian fixed-width records with a versioned header — §10.1. | Phase 2 |
-| OP-3 | Orders still open at the end of a run. | Cancel with `END_OF_RUN` before final reconciliation. | Phase 4 |
+| OP-3 | Orders still open at the end of a run. | **Decided (Phase 4):** `Simulator::finish()` cancels them with `END_OF_RUN`, then runs the final reconciliation. | Phase 4 |
 
 ## 14. Test plan by component
 
@@ -388,8 +402,8 @@ PLAN.md §15 v1.2.
 | Event engine | Total order; monotonic clock; latency ≥ 1 ns; no same-event fills | EVT-1…4, TIME-5 | Unit + property | 2 |
 | Determinism | Same inputs ⇒ same journal hash; PRNG fixed sequence | DET-1…3 | Determinism test in CI | 2, 5 |
 | Data pipeline | Exact timestamp and decimal conversion; bars emitted at close; malformed data reported per fixture; merge order; bounded-memory replay | TIME-1,2,4,6, INS-1,2, EVT-2, VER-1 | pytest + fixtures, gtest | 3 |
-| Execution models | Fill rules per model; boundary cases; TIF; caps | CND-*, QTE-*, BKM-1, FEE-1, SLP-* | Golden cases | 4 |
-| Ledger | Reconciliation exact; replay reproduces state; pre-trade check order | ACC-1…11 | Golden + randomised | 4 |
+| Execution models | Fill rules per model; boundary cases; TIF; caps; look-ahead | CND-*, QTE-*, BKM-1, FEE-1, SLP-*, OP-1 | Golden cases, look-ahead tests | 4 |
+| Ledger | Reconciliation exact; replay reproduces state; pre-trade check order | ACC-1…11, OP-3 | Golden, scripted end-to-end, 1000 seeded runs | 4 |
 | Strategy SDK | No look-ahead; off-tick/off-lot rejected at conversion | TIME-3, INS-3 | pytest | 5 |
 | Analytics | Every metric equals fixture and independent library | MET-1…10 | pytest + fixtures | 6 |
 | Versioning | Manifest contains all three versions | VER-1 | pytest | 0 (engine version), 5 |
