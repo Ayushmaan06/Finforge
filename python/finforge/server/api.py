@@ -21,6 +21,7 @@ import jsonschema
 import numpy as np
 import pyarrow.parquet as pq
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
@@ -28,8 +29,12 @@ from sqlalchemy.orm import Session
 
 from finforge import _engine
 from finforge.analytics.compare import compare as compare_runs
+from finforge.analytics.downsample import downsample
+from finforge.analytics.metrics import daily_closes, simple_returns
 from finforge.config import BacktestConfig, Execution, Fees, Risk
+from finforge.data import Dataset as DataDir
 from finforge.data import DatasetRejected, ingest
+from finforge.data.fixedpoint import Grid
 from finforge.server import queue, service, storage
 from finforge.server.db import (
     Dataset,
@@ -41,6 +46,23 @@ from finforge.server.db import (
     Upload,
     make_engine,
     session_factory,
+)
+from finforge.server.schemas import (
+    CancelOut,
+    CompareOut,
+    DatasetBrief,
+    DatasetOut,
+    EquityOut,
+    Health,
+    Marker,
+    PricesOut,
+    ReturnsOut,
+    RunOut,
+    RunSubmitted,
+    StrategyBrief,
+    StrategyOut,
+    TradesOut,
+    UploadOut,
 )
 from finforge.server.settings import Settings
 from finforge.strategies import BUILTIN
@@ -136,6 +158,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.engine = engine
+    if settings.cors_origins:  # the dashboard (frontend/) calls the API from the browser
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_methods=["GET", "POST"],
+            allow_headers=["*"],
+        )
 
     def db() -> Iterator[Session]:
         with sessions() as s:
@@ -150,7 +179,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # --- health ---
 
     @app.get("/health", tags=["meta"])
-    def health(session: DB) -> dict[str, Any]:
+    def health(session: DB) -> Health:
         session.execute(select(1))
         return {"status": "ok", "engine": _engine.engine_version()}
 
@@ -162,7 +191,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["datasets"],
         summary="Upload one raw data file (CSV, single-file zip, Parquet or JSON).",
     )
-    def upload(session: DB, file: Annotated[UploadFile, File()]) -> dict[str, Any]:
+    def upload(session: DB, file: Annotated[UploadFile, File()]) -> UploadOut:
         try:
             uid, path, size, sha, kind = storage.save_upload(
                 file.file, settings.uploads_dir, settings.max_upload_bytes
@@ -184,7 +213,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _upload_out(row)
 
     @app.get("/uploads/{upload_id}", tags=["datasets"])
-    def get_upload(upload_id: uuid.UUID, session: DB) -> dict[str, Any]:
+    def get_upload(upload_id: uuid.UUID, session: DB) -> UploadOut:
         row = session.get(Upload, str(upload_id))
         if row is None:
             raise HTTPException(404, "unknown upload")
@@ -239,7 +268,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["datasets"],
         summary="Ingest uploads into a versioned dataset and register it.",
     )
-    def create_dataset(body: DatasetIn, session: DB) -> dict[str, Any]:
+    def create_dataset(body: DatasetIn, session: DB) -> DatasetOut:
         spec = spec_from(body, session)
         tmp = settings.datasets_dir / f".ingest-{uuid.uuid4()}"
         try:
@@ -257,12 +286,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _dataset_out(row, session)
 
     @app.get("/datasets", tags=["datasets"])
-    def list_datasets(session: DB) -> list[dict[str, Any]]:
+    def list_datasets(session: DB) -> list[DatasetBrief]:
         rows = session.execute(select(Dataset).order_by(Dataset.created_at)).scalars()
         return [_dataset_out(r, session, brief=True) for r in rows]
 
     @app.get("/datasets/{dataset_id}", tags=["datasets"])
-    def get_dataset(dataset_id: str, session: DB) -> dict[str, Any]:
+    def get_dataset(dataset_id: str, session: DB) -> DatasetOut:
         row = session.get(Dataset, dataset_id)
         if row is None:
             raise HTTPException(404, "unknown dataset")
@@ -271,12 +300,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # --- strategies ---
 
     @app.get("/strategies", tags=["strategies"])
-    def list_strategies(session: DB) -> list[dict[str, Any]]:
+    def list_strategies(session: DB) -> list[StrategyBrief]:
         rows = session.execute(select(StrategyRow).order_by(StrategyRow.name)).scalars()
         return [{"name": r.name, "summary": r.description.split("\n", 1)[0]} for r in rows]
 
     @app.get("/strategies/{name}", tags=["strategies"])
-    def get_strategy(name: str, session: DB) -> dict[str, Any]:
+    def get_strategy(name: str, session: DB) -> StrategyOut:
         r = session.get(StrategyRow, name)
         if r is None:
             raise HTTPException(404, "unknown strategy")
@@ -296,7 +325,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         tags=["runs"],
         summary="Queue a backtest of a built-in strategy on a registered dataset.",
     )
-    def submit_run(body: RunIn, session: DB) -> dict[str, Any]:
+    def submit_run(body: RunIn, session: DB) -> RunSubmitted:
         cls = BUILTIN.get(body.strategy.name)
         if cls is None:  # D8: built-in strategies only; never "module:Class" or file paths
             raise HTTPException(422, f"unknown strategy {body.strategy.name!r}")
@@ -339,18 +368,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: DB,
         status_: Annotated[str | None, Query(alias="status")] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    ) -> list[dict[str, Any]]:
+    ) -> list[RunOut]:
         q = select(Run).order_by(Run.created_at.desc()).limit(limit)
         if status_:
             q = q.where(Run.status == status_)
         return [_run_out(r, session) for r in session.execute(q).scalars()]
 
     @app.get("/runs/{run_id}", tags=["runs"])
-    def get_run(run_id: uuid.UUID, session: DB) -> dict[str, Any]:
+    def get_run(run_id: uuid.UUID, session: DB) -> RunOut:
         return _run_out(_run(session, run_id), session)
 
     @app.post("/runs/{run_id}/cancel", status_code=202, tags=["runs"])
-    def cancel_run(run_id: uuid.UUID, session: DB) -> dict[str, Any]:
+    def cancel_run(run_id: uuid.UUID, session: DB) -> CancelOut:
         run = _run(session, run_id)
         outcome = queue.request_cancel(engine, run.id)
         if outcome is None:
@@ -363,22 +392,118 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = _artefact(run, "report.json")
         return json.loads(path.read_text())
 
-    @app.get("/runs/{run_id}/equity", tags=["runs"])
+    @app.get(
+        "/runs/{run_id}/equity",
+        tags=["runs"],
+        summary="Equity, drawdown and benchmark, downsampled with LTTB.",
+    )
     def equity(
-        run_id: uuid.UUID, session: DB, max_points: Annotated[int, Query(ge=2, le=100_000)] = 2_000
-    ) -> dict[str, Any]:
+        run_id: uuid.UUID, session: DB, max_points: Annotated[int, Query(ge=3, le=100_000)] = 2_000
+    ) -> EquityOut:
         run = _run(session, run_id)
         t = pq.read_table(_artefact(run, "equity.parquet"), columns=["ts", "equity_real"])
         ts, eq = t.column("ts").to_numpy(), t.column("equity_real").to_numpy()
-        if len(ts) > max_points:  # even stride, always keeping the last point
-            idx = np.unique(np.r_[np.linspace(0, len(ts) - 1, max_points).astype(int), len(ts) - 1])
-            ts, eq = ts[idx], eq[idx]
-        peak = np.maximum.accumulate(eq) if len(eq) else eq
-        return {
-            "ts": ts.tolist(),
-            "equity": eq.tolist(),
-            "drawdown": (eq / peak - 1.0).tolist() if len(eq) else [],
-        }
+        if len(ts) == 0:
+            return EquityOut(ts=[], equity=[], drawdown=[], benchmark=None, points_total=0)
+        dd = eq / np.maximum.accumulate(eq) - 1.0  # on the full curve, before downsampling
+        idx = downsample(ts, eq, max_points, keep=[int(np.argmin(dd)), int(np.argmax(eq))])
+        bench = None
+        bpath = Path(run.artefact_dir) / "benchmark" / "equity.parquet"
+        if bpath.exists():
+            b = pq.read_table(bpath, columns=["ts", "equity_real"])
+            bts, beq = b.column("ts").to_numpy(), b.column("equity_real").to_numpy()
+            pos = np.searchsorted(bts, ts[idx], side="right") - 1
+            bench = [float(beq[p]) if p >= 0 else None for p in pos]
+        return EquityOut(
+            ts=ts[idx].tolist(),
+            equity=eq[idx].tolist(),
+            drawdown=dd[idx].tolist(),
+            benchmark=bench,
+            points_total=len(ts),
+        )
+
+    @app.get(
+        "/runs/{run_id}/returns",
+        tags=["runs"],
+        summary="Daily (UTC close) simple returns of the run and of its benchmark.",
+    )
+    def returns(run_id: uuid.UUID, session: DB) -> ReturnsOut:
+        run = _run(session, run_id)
+        initial = float(run.config["initial_capital"])
+
+        def daily(path: Path) -> tuple[np.ndarray, np.ndarray]:
+            t = pq.read_table(path, columns=["ts", "equity_real"])
+            days, closes = daily_closes(
+                t.column("ts").to_numpy(), t.column("equity_real").to_numpy()
+            )
+            return days, simple_returns(closes, initial)
+
+        days, r = daily(_artefact(run, "equity.parquet"))
+        bpath = Path(run.artefact_dir) / "benchmark" / "equity.parquet"
+        bench = daily(bpath)[1].tolist() if bpath.exists() else None
+        return ReturnsOut(day_ts=days.tolist(), returns=r.tolist(), benchmark=bench)
+
+    @app.get(
+        "/runs/{run_id}/prices",
+        tags=["runs"],
+        summary="Price of one instrument over the run (LTTB) with the run's fills as markers.",
+    )
+    def prices(
+        run_id: uuid.UUID,
+        session: DB,
+        symbol: str,
+        max_points: Annotated[int, Query(ge=3, le=100_000)] = 2_000,
+        max_markers: Annotated[int, Query(ge=0, le=50_000)] = 2_000,
+    ) -> PricesOut:
+        run = _run(session, run_id)
+        cfg = run.config
+        if symbol not in cfg["universe"]:
+            raise HTTPException(422, f"{symbol!r} is not in the run's universe")
+        data = DataDir(cfg["dataset"])
+        inst = data.registry.by_symbol(symbol)
+        tick: Grid = inst.tick
+        kind = "bars" if cfg["execution"]["model"] == "candle" else "quotes"
+        entry = data.file(kind, symbol)
+        cols = ["ts_close", "close"] if kind == "bars" else ["ts", "bid", "ask"]
+        t = pq.read_table(data.path / entry["path"], columns=cols)
+        ts = t.column(cols[0]).to_numpy()
+        if kind == "bars":
+            px = t.column("close").to_numpy().astype(np.float64)
+        else:
+            px = (t.column("bid").to_numpy() + t.column("ask").to_numpy()) / 2.0
+        px = px * tick.units / 10**tick.digits
+        lo = service._ns(cfg.get("start"))
+        hi = service._ns(cfg.get("end"))
+        window = np.ones(len(ts), dtype=bool)
+        if lo is not None:
+            window &= ts > lo
+        if hi is not None:
+            window &= ts <= hi
+        ts, px = ts[window], px[window]
+        fills = pq.read_table(
+            _artefact(run, "fills.parquet"),
+            columns=["ts", "symbol", "side", "price_real", "qty_real"],
+        )
+        mine = [f for f in fills.to_pylist() if f["symbol"] == symbol]
+        step = max(1, -(-len(mine) // max_markers)) if max_markers else len(mine) + 1
+        shown = mine[::step] if max_markers else []
+        markers = [
+            Marker(ts=f["ts"], side=f["side"], price=f["price_real"], qty=f["qty_real"])
+            for f in shown
+        ]
+        # Charts attach markers to points of the series: keep the fill times in the price series.
+        at = np.searchsorted(ts, [f["ts"] for f in shown])
+        keep = [int(i) for i in at if i < len(ts)]
+        idx = downsample(ts, px, max_points, keep=keep) if len(ts) else np.empty(0, np.int64)
+        return PricesOut(
+            symbol=symbol,
+            kind=kind,
+            ts=ts[idx].tolist(),
+            price=px[idx].tolist(),
+            markers=markers,
+            points_total=len(ts),
+            markers_total=len(mine),
+        )
 
     @app.get("/runs/{run_id}/trades", tags=["runs"])
     def trades(
@@ -386,7 +511,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: DB,
         offset: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=10_000)] = 500,
-    ) -> dict[str, Any]:
+    ) -> TradesOut:
         run = _run(session, run_id)
         t = pq.read_table(_artefact(run, "trades.parquet"))
         return {"total": t.num_rows, "offset": offset, "trades": t.slice(offset, limit).to_pylist()}
@@ -440,8 +565,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         summary="Metrics table and aligned daily equity/drawdown for completed runs.",
     )
     def compare(
-        session: DB, runs: Annotated[str, Query(description="comma-separated run ids")]
-    ) -> dict[str, Any]:
+        session: DB,
+        runs: Annotated[str, Query(description="comma-separated run ids")],
+        split: Annotated[
+            datetime | None, Query(description="in-sample / out-of-sample split")
+        ] = None,
+    ) -> CompareOut:
+        if split is not None and split.tzinfo is None:
+            raise HTTPException(422, "split must carry a timezone")
         ids = [r.strip() for r in runs.split(",") if r.strip()]
         if not 1 <= len(ids) <= 20:
             raise HTTPException(422, "give between 1 and 20 run ids")
@@ -454,7 +585,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if run.status != "completed":
                 raise HTTPException(409, f"run {rid} is {run.status}")
             dirs.append(Path(run.artefact_dir))
-        c = compare_runs(dirs)
+        c = compare_runs(dirs, split_ns=BacktestConfig._ns(split) if split else None)
         for row, rid in zip(c.rows, ids, strict=True):
             row["run_id"] = rid
             row.pop("run_dir", None)

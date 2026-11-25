@@ -194,12 +194,27 @@ def test_scripted_workflow(db_url: str, tmp_path: Path, worker_thread) -> None:
             run["metrics"]["total_return"]
         )
         eq = client.get(f"/runs/{a}/equity", params={"max_points": 50}).json()
-        assert len(eq["ts"]) <= 51 and eq["ts"] == sorted(eq["ts"])
+        assert eq["points_total"] == 300 and len(eq["ts"]) <= 54 and eq["ts"] == sorted(eq["ts"])
+        assert len(eq["benchmark"]) == len(eq["ts"]) and min(eq["drawdown"]) <= 0
+        assert min(eq["drawdown"]) == pytest.approx(-run["metrics"]["max_drawdown"])  # kept
+        ret = client.get(f"/runs/{a}/returns").json()
+        assert len(ret["returns"]) == len(ret["benchmark"]) == len(ret["day_ts"]) >= 1
+        px = client.get(f"/runs/{a}/prices", params={"symbol": "AAA", "max_points": 40}).json()
+        assert px["kind"] == "bars" and px["points_total"] == 300 and px["markers"]
+        assert {m["ts"] for m in px["markers"]} <= set(px["ts"])  # markers sit on points
+        assert client.get(f"/runs/{a}/prices", params={"symbol": "ZZZ"}).status_code == 422
         tr = client.get(f"/runs/{a}/trades", params={"limit": 3}).json()
         assert tr["total"] == run["metrics"]["trades"] and len(tr["trades"]) == 3
         cmp = client.get("/compare", params={"runs": f"{a},{b}"}).json()
         assert [row["run_id"] for row in cmp["rows"]] == [a, b]
         assert len(cmp["series"]) == 5  # ts + equity/drawdown for each run
+        split = client.get(
+            "/compare", params={"runs": f"{a},{b}", "split": "2024-03-01T02:30:00Z"}
+        ).json()
+        for row in split["rows"]:
+            assert {"is_total_return", "oos_total_return", "is_sharpe", "oos_sharpe"} <= set(row)
+            total = (1 + row["is_total_return"]) * (1 + row["oos_total_return"]) - 1
+            assert total == pytest.approx(row["total_return"])  # the two halves compound
         assert {r["id"] for r in client.get("/runs", params={"status": "completed"}).json()} == {
             a,
             b,
