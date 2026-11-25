@@ -3,7 +3,7 @@
 from decimal import ROUND_FLOOR, Decimal
 from typing import Any, ClassVar
 
-from finforge.sdk import Bar, Context, Quote, Strategy
+from finforge.sdk import Bar, Context, Quote, Strategy, params_schema
 
 
 class BuyAndHold(Strategy):
@@ -20,6 +20,17 @@ class BuyAndHold(Strategy):
 
     name = "buy_and_hold"
     defaults: ClassVar[dict[str, Any]] = {"buffer": "0.02"}
+
+    params_schema: ClassVar[dict[str, Any]] = params_schema(
+        {
+            "buffer": {
+                "anyOf": [
+                    {"type": "string"},
+                    {"type": "number", "minimum": 0, "exclusiveMaximum": 1},
+                ]
+            },
+        }
+    )
 
     def setup(self) -> None:
         self.buffer = Decimal(str(self.params["buffer"]))

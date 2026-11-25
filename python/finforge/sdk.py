@@ -153,6 +153,26 @@ class Fill:
 # --- Strategy ------------------------------------------------------------------------------------
 
 
+# JSON Schema fragments for strategy parameters (the API validates against them, D8).
+QTY_SCHEMA: dict[str, Any] = {
+    "anyOf": [
+        {"type": "string", "pattern": r"^[0-9]+(\.[0-9]+)?$"},
+        {"type": "number", "exclusiveMinimum": 0},
+    ],
+    "description": "quantity in instrument units (decimal string preferred)",
+}
+
+
+def params_schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": properties,
+        "required": required or [],
+        "additionalProperties": False,
+    }
+
+
 class Strategy:
     """Base class. Override the hooks you need; all default to doing nothing.
 
@@ -162,6 +182,8 @@ class Strategy:
 
     name: ClassVar[str] = ""
     defaults: ClassVar[dict[str, Any]] = {}
+    # JSON Schema of the parameters (validated by the API before a run is queued).
+    params_schema: ClassVar[dict[str, Any]] = params_schema({})
 
     def __init__(self, **params: Any) -> None:
         unknown = set(params) - set(self.defaults) if self.defaults else set()

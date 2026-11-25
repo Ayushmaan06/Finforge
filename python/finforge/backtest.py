@@ -20,7 +20,7 @@ import inspect
 import json
 import time
 import traceback
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -294,9 +294,14 @@ def run(
     *,
     run_dir: str | Path | None = None,
     chunk_rows: int = 65_536,
+    progress: Callable[[int, int], bool] | None = None,
+    progress_every: int = 8192,
 ) -> RunResult:
     """Run one backtest and write its run directory. Never raises for a strategy error: the
     result has status "failed" and the traceback is in the manifest.
+
+    `progress(events_processed, sim_now_ns)` is called every `progress_every` events; returning
+    True cancels the run between two events (status "cancelled", partial artefacts, no report).
 
     A completed run also gets a buy-and-hold benchmark run (in `<run_dir>/benchmark`, unless
     `config.benchmark` is false) and `report.json` (finforge.analytics.report)."""
@@ -306,7 +311,7 @@ def run(
         config = BacktestConfig.from_yaml(config)
     elif isinstance(config, dict):
         config = BacktestConfig.model_validate(config)
-    result = _execute(config, run_dir, chunk_rows)
+    result = _execute(config, run_dir, chunk_rows, progress, progress_every)
     if result.status != "completed":
         return result
     bench_dir = None
@@ -330,6 +335,8 @@ def _execute(
     config: BacktestConfig,
     run_dir: str | Path | None,
     chunk_rows: int,
+    progress: Callable[[int, int], bool] | None = None,
+    progress_every: int = 8192,
 ) -> RunResult:
     ds = Dataset(config.dataset)
     if config.dataset_id is not None and config.dataset_id != ds.id:
@@ -361,7 +368,10 @@ def _execute(
         latency_ns=x.latency_ns,
         start_ns=config.start_ns or 0,
         equity_interval_ns=(config.equity_interval_s or 0) * 1_000_000_000,
+        progress_every=progress_every if progress is not None else 0,
     )
+    if progress is not None:
+        engine.set_progress(lambda events, now: bool(progress(events, now)))
     ctx = Context(engine, registry, config.universe, config.seed)
     engine.set_handler(_Runner(strategy, ctx, registry))
     engine.open_account(**config.engine_account())
@@ -376,9 +386,11 @@ def _execute(
     status, error = "completed", None
     t0 = time.perf_counter()
     try:
-        engine.run()
+        if engine.run() == "cancelled":
+            status = "cancelled"
         engine.finish()  # OP-3; ACC-10/11 checked in C++ (a ledger bug aborts)
-        strategy.on_end(ctx)
+        if status == "completed":
+            strategy.on_end(ctx)
     except Exception as exc:  # a strategy error: the run fails, artefacts so far are kept
         status = "failed"
         error = {

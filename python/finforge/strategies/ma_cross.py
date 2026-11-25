@@ -2,7 +2,7 @@
 
 from typing import Any, ClassVar
 
-from finforge.sdk import Bar, Context, Strategy
+from finforge.sdk import QTY_SCHEMA, Bar, Context, Strategy, params_schema
 
 
 class MovingAverageCrossover(Strategy):
@@ -21,6 +21,14 @@ class MovingAverageCrossover(Strategy):
 
     name = "ma_cross"
     defaults: ClassVar[dict[str, Any]] = {"fast": 10, "slow": 50, "qty": "1"}
+
+    params_schema: ClassVar[dict[str, Any]] = params_schema(
+        {
+            "fast": {"type": "integer", "minimum": 1},
+            "slow": {"type": "integer", "minimum": 2},
+            "qty": QTY_SCHEMA,
+        }
+    )
 
     def setup(self) -> None:
         fast, slow = int(self.params["fast"]), int(self.params["slow"])

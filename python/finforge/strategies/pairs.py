@@ -4,7 +4,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from finforge.sdk import Bar, Context, Strategy
+from finforge.sdk import QTY_SCHEMA, Bar, Context, Strategy, params_schema
 
 
 class PairsTrading(Strategy):
@@ -35,6 +35,20 @@ class PairsTrading(Strategy):
         "qty_a": "1",
         "qty_b": "1",
     }
+
+    params_schema: ClassVar[dict[str, Any]] = params_schema(
+        {
+            "a": {"type": "string", "minLength": 1},
+            "b": {"type": "string", "minLength": 1},
+            "lookback": {"type": "integer", "minimum": 2},
+            "entry_z": {"type": "number", "exclusiveMinimum": 0},
+            "exit_z": {"type": "number", "minimum": 0},
+            "beta": {"type": "number"},
+            "qty_a": QTY_SCHEMA,
+            "qty_b": QTY_SCHEMA,
+        },
+        required=["a", "b"],
+    )
 
     def setup(self) -> None:
         if not self.params["a"] or not self.params["b"] or self.params["a"] == self.params["b"]:
