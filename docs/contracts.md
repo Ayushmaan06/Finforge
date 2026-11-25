@@ -271,6 +271,36 @@ and one test for their order.
   the strategy source plus name and parameters. Engine version = `<semver>+<git sha>.<build type>`
   (`finforge.engine_version()`, Phase 0). All three go in every run manifest.
 
+### 10.1 Journal format (OP-2, decided in Phase 2)
+
+The journal is what DET-1 hashes, so its bytes are part of the contract.
+
+```text
+header : "FFJ1" (4 bytes) | u16 format_version (= 1) | u16 reserved (= 0)
+record : u8 type | u8 reserved (= 0) | u16 payload_length | payload
+key    : i64 ts | u8 class | u32 instrument_id | u64 seq          (EVT-1 key)
+```
+
+- Every integer is **little-endian, fixed width**, no padding, no floating point. Enums are `u8`
+  with the numeric values of the engine enums.
+- **Input records** (each processed queue event, in processing order), payload starts with `key`:
+  `1 Submit` (owner u32, client_ref u64, instrument u32, side u8, type u8, tif u8, price i64,
+  qty i64) · `2 Cancel` (owner u32, order u64) · `3 Amend` (owner u32, order u64, qty i64,
+  price i64) · `4 Bar` · `5 Quote` · `6 TradePrint` · `7 Timer` (owner u32, tag u64) ·
+  `8 Snapshot` (per book: instrument u32, has_bid u8, bid i64, bid_qty i64, has_ask u8, ask i64,
+  ask_qty i64).
+- **Output records** (what the execution model emitted, right after the input that caused them):
+  `16 OrderUpdate` (order u64, status u8, filled i64, remaining i64, reject_reason u8,
+  cancel_reason u8) · `17 OrderAmended` (order u64, qty i64, remaining i64) · `18 Trade` (trade_id
+  u64, instrument u32, price i64, qty i64, aggressor u64, resting u64, aggressor_owner u32,
+  resting_owner u32, aggressor_side u8, ts i64) · `19 ActionRefused` (key, owner u32, order u64,
+  reason u8).
+- The engine version is **not** in the journal (it differs between Debug and Release builds by
+  design); it goes in the run manifest (VER-1).
+- Any change to this layout bumps `format_version` and changes every fingerprint.
+- **Test:** golden bytes for a record; the hash equals SHA-256 of the sink bytes; a 1M-event
+  synthetic run has a pinned fingerprint in every CI build (Phase 2).
+
 ## 11. Metrics conventions
 
 Computed in Python from the engine's exported arrays (PLAN D1).
@@ -328,7 +358,7 @@ PLAN.md §15 v1.2.
 | # | Question | Proposed default | Decide by |
 |---|---|---|---|
 | OP-1 | A MARKET buy passes the pre-trade cash check at the reference price, but fills at a worse price than cash allows. | Reduce the fill to the affordable whole lots; cancel the rest with a new reason `INSUFFICIENT_CASH_AT_FILL`. | Phase 4 |
-| OP-2 | Journal byte format (field order, endianness) for DET-1. | Little-endian fixed-width binary, one record per event, versioned header. | Phase 2 |
+| OP-2 | Journal byte format (field order, endianness) for DET-1. | **Decided (Phase 2):** little-endian fixed-width records with a versioned header — §10.1. | Phase 2 |
 | OP-3 | Orders still open at the end of a run. | Cancel with `END_OF_RUN` before final reconciliation. | Phase 4 |
 
 ## 14. Test plan by component

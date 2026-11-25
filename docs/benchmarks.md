@@ -38,3 +38,11 @@ Notes:
   cache misses on the ~90k order records.
 - Nothing has been optimised yet. Phase 9 revisits this with a profiler; this table is the
   reference any change must be compared against.
+
+## Simulator — Phase 2 (2026-11-25)
+
+End-to-end Mode B run, `finforge-sim --synthetic --seed 42 --events 1000000` (8 agents, one book):
+1M queue events → ~331k orders, ~122k trades, ~1.9M journal records (76 MB), every byte hashed
+with SHA-256. Wall time, same machine as above, 3 runs: 1.05–1.57 s (≈ 0.65–0.95 M events/s).
+Measured with `/usr/bin/time`, not Google Benchmark: a rough end-to-end figure, not a baseline
+for micro-optimisation.

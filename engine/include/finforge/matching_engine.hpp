@@ -59,6 +59,7 @@ class MatchingEngine {
     [[nodiscard]] const InstrumentRegistry& registry() const { return registry_; }
     [[nodiscard]] std::size_t order_count() const { return orders_.size(); }
     [[nodiscard]] std::size_t open_order_count() const { return open_orders_; }
+    [[nodiscard]] std::uint64_t trade_count() const { return next_trade_id_ - 1; }
 
     // MAT-1, MAT-5, MAT-8, ORD-8 over every book. O(resting orders). Trips FINFORGE_CHECK.
     // Runs after every operation when FINFORGE_EXPENSIVE_CHECKS is defined (Debug builds).
