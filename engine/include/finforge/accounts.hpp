@@ -177,6 +177,10 @@ class Accounts final : public AccountHooks {
     [[nodiscard]] Price mark(InstrumentId id) const;
     [[nodiscard]] std::vector<Price> marks() const;
     [[nodiscard]] std::span<const EquityPoint> equity_curve(OwnerId owner) const;
+    // Per-instrument position and mark at every equity point, row-major: point p, instrument i at
+    // index p × instrument_count + i.
+    [[nodiscard]] std::span<const Qty> position_curve(OwnerId owner) const;
+    [[nodiscard]] std::span<const Price> mark_curve(OwnerId owner) const;
     // ACC-10 (both forms) and ACC-11 for one account.
     [[nodiscard]] bool reconciles(OwnerId owner) const;
 
@@ -192,6 +196,8 @@ class Accounts final : public AccountHooks {
         Ledger ledger;
         std::map<OrderId, OpenOrder> open;
         std::vector<EquityPoint> equity;
+        std::vector<Qty> point_qty;     // per equity point × instrument
+        std::vector<Price> point_mark;  // per equity point × instrument
     };
 
     Account* find(OwnerId owner);

@@ -181,7 +181,31 @@ def _orders_table(engine: Any, ctx: Context, registry: Any) -> pa.Table:
     )
 
 
-def _fills_table(engine: Any, registry: Any) -> tuple[pa.Table, dict[str, int]]:
+def _reference_prices(f: dict, ctx: Context, registry: Any, model: str) -> np.ndarray:
+    """Per fill, the price before execution costs: the fill bar's open (Candle) or the mid of the
+    last quote at the fill time (Quote). NaN when unknown. Used for execution-cost analytics."""
+    out = np.full(len(f["ts"]), np.nan)
+    sym = [i.symbol for i in registry]
+    for k, (ts, inst) in enumerate(zip(f["ts"], f["instrument_id"], strict=True)):
+        s = sym[inst]
+        if model == "candle":
+            series = ctx._bars[s]
+            times = series.cols["ts"][: series.n]
+            j = int(np.searchsorted(times, ts))
+            if j < series.n and times[j] == ts:
+                out[k] = series.cols["open"][j]
+        else:
+            series = ctx._quotes[s]
+            times = series.cols["ts"][: series.n]
+            j = int(np.searchsorted(times, ts, side="right")) - 1
+            if j >= 0 and times[j] == ts:
+                out[k] = (series.cols["bid"][j] + series.cols["ask"][j]) / 2
+    return out
+
+
+def _fills_table(
+    engine: Any, registry: Any, ctx: Context, model: str
+) -> tuple[pa.Table, dict[str, int]]:
     f = engine.fills()
     sym = [i.symbol for i in registry]
     tick = [i.tick for i in registry]
@@ -210,6 +234,7 @@ def _fills_table(engine: Any, registry: Any) -> tuple[pa.Table, dict[str, int]]:
                 pa.float64(),
             ),
             "fee_real": pa.array(f["fee"] / MONEY_SCALE, pa.float64()),
+            "reference_real": pa.array(_reference_prices(f, ctx, registry, model), pa.float64()),
         }
     )
     borrow = {"charges": len(f["borrow_ts"]), "total": int(f["borrow_amount"].sum())}
@@ -235,6 +260,35 @@ def _equity_table(engine: Any) -> pa.Table:
     return pa.table(cols)
 
 
+def _exposure_table(engine: Any, registry: Any, universe: list[str]) -> pa.Table:
+    """Long format: one row per equity point and universe instrument (position lots, mark ticks)."""
+    e = engine.equity()
+    ts, pos, mark = e["ts"], e["position"], e["mark"]
+    ids = [registry.by_symbol(s).instrument_id for s in universe]
+    n = len(ts)
+    return pa.table(
+        {
+            "ts": pa.array(np.repeat(ts, len(ids)), pa.int64()),
+            "symbol": pa.array(universe * n, pa.string()),
+            "position": pa.array(pos[:, ids].reshape(-1) if n else [], pa.int64()),
+            "mark": pa.array(mark[:, ids].reshape(-1) if n else [], pa.int64()),
+        }
+    )
+
+
+def _instruments(registry: Any, universe: list[str]) -> list[dict[str, Any]]:
+    out = []
+    for s in universe:
+        i = registry.by_symbol(s)
+        out.append(
+            {
+                **i.to_dict(),
+                "money_per_tick_lot": _engine.money_per_tick_lot(i.tick_size, i.lot_size),
+            }
+        )
+    return out
+
+
 def run(
     config: BacktestConfig | dict | str | Path,
     *,
@@ -242,12 +296,41 @@ def run(
     chunk_rows: int = 65_536,
 ) -> RunResult:
     """Run one backtest and write its run directory. Never raises for a strategy error: the
-    result has status "failed" and the traceback is in the manifest."""
+    result has status "failed" and the traceback is in the manifest.
+
+    A completed run also gets a buy-and-hold benchmark run (in `<run_dir>/benchmark`, unless
+    `config.benchmark` is false) and `report.json` (finforge.analytics.report)."""
+    from finforge.analytics.report import write_report
+
     if isinstance(config, str | Path):
         config = BacktestConfig.from_yaml(config)
     elif isinstance(config, dict):
         config = BacktestConfig.model_validate(config)
+    result = _execute(config, run_dir, chunk_rows)
+    if result.status != "completed":
+        return result
+    bench_dir = None
+    if config.benchmark:
+        bench_cfg = config.model_copy(
+            update={
+                "strategy": config.strategy.model_copy(
+                    update={"name": "buy_and_hold", "params": {}}
+                ),
+            }
+        )
+        bench = _execute(bench_cfg, result.run_dir / "benchmark", chunk_rows)
+        if bench.status == "completed":
+            bench_dir = bench.run_dir
+    write_report(result.run_dir, bench_dir)
+    result.manifest = json.loads((result.run_dir / "manifest.json").read_text())
+    return result
 
+
+def _execute(
+    config: BacktestConfig,
+    run_dir: str | Path | None,
+    chunk_rows: int,
+) -> RunResult:
     ds = Dataset(config.dataset)
     if config.dataset_id is not None and config.dataset_id != ds.id:
         raise ValueError(f"dataset id {ds.id} does not match the config's {config.dataset_id}")
@@ -306,10 +389,16 @@ def run(
     wall = time.perf_counter() - t0
 
     orders = _orders_table(engine, ctx, registry)
-    fills, borrow = _fills_table(engine, registry)
+    fills, borrow = _fills_table(engine, registry, ctx, x.model)
     equity = _equity_table(engine)
+    exposure = _exposure_table(engine, registry, list(config.universe))
     artefacts = {}
-    for name, table in (("orders", orders), ("fills", fills), ("equity", equity)):
+    for name, table in (
+        ("orders", orders),
+        ("fills", fills),
+        ("equity", equity),
+        ("exposure", exposure),
+    ):
         path = run_dir / f"{name}.parquet"
         pq.write_table(table, path)
         artefacts[path.name] = _sha256_file(path)
@@ -324,6 +413,7 @@ def run(
         "error": error,
         "config": config.to_json_dict(),
         "dataset": {"id": ds.id, "name": ds.manifest["name"], "path": str(config.dataset)},
+        "instruments": _instruments(registry, list(config.universe)),
         "strategy": strat_info,
         "engine": _engine_info(),
         "execution_model": x.model,

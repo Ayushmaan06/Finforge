@@ -49,10 +49,14 @@ def test_artefacts_and_manifest(two_symbols: Path, tmp_path: Path) -> None:
     r = run(cfg, run_dir=tmp_path / "r1")
     assert r.status == "completed"
     assert sorted(p.name for p in r.run_dir.iterdir()) == [
+        "benchmark",
         "equity.parquet",
+        "exposure.parquet",
         "fills.parquet",
         "manifest.json",
         "orders.parquet",
+        "report.json",
+        "trades.parquet",
     ]
     m = json.loads((r.run_dir / "manifest.json").read_text())
     assert m == r.manifest

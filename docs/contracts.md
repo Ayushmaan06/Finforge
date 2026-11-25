@@ -351,7 +351,8 @@ Computed in Python from the engine's exported arrays (PLAN D1).
   execution model.
 
 **Tests (Phase 6):** every metric against hand-computed fixtures and an independent library; edge
-cases (flat equity, no trades, all wins).
+cases (flat equity, no trades, all wins). Done: `python/tests/test_metrics.py` (1e-9, incl.
+empyrical-reloaded), `test_analytics.py`; definitions in [analytics.md](analytics.md).
 
 ---
 
@@ -383,6 +384,8 @@ PLAN.md §15 v1.2.
 | CND-1 | Eligibility keyed to the send time: `open_time(b) ≥ sent_ts` — Phase 4 |
 | ORD-5 | New cancel reason `INSUFFICIENT_CASH_AT_FILL` (OP-1) — Phase 4 |
 | ACC-9 | Projected position (incl. open orders) for limit/short/leverage; amend replacements checked — Phase 4 |
+| MET-2/7/8 | Midnight points close the ended day; drawdown on the full curve with initial capital first, plus longest time under water; VaR quantile = linear interpolation — Phase 6 |
+| MET-1 | Execution cost per trade = pro-rata fees + adverse difference to a reference price (Candle: bar open, Quote: mid) — Phase 6 |
 
 ## 13. Open points (decide by the phase shown)
 

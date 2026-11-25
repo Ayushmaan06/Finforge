@@ -380,10 +380,17 @@ void Accounts::snapshot(Timestamp ts) {
                             l.total_fees(),
                             l.borrow_costs(),
                             l.gross_exposure(m)};
+        const std::size_t k = m.size();
         if (!a->equity.empty() && a->equity.back().ts == ts) {
             a->equity.back() = p;  // one point per timestamp (several instruments' bars)
+            a->point_qty.resize(a->point_qty.size() - k);
+            a->point_mark.resize(a->point_mark.size() - k);
         } else {
             a->equity.push_back(p);
+        }
+        for (std::size_t i = 0; i < k; ++i) {
+            a->point_qty.push_back(l.position(InstrumentId{static_cast<std::uint32_t>(i)}).qty);
+            a->point_mark.push_back(m[i]);
         }
     }
 }
@@ -401,6 +408,16 @@ void Accounts::finish(Timestamp now) {
 std::span<const EquityPoint> Accounts::equity_curve(OwnerId owner) const {
     const Account* a = find(owner);
     return a ? std::span<const EquityPoint>(a->equity) : std::span<const EquityPoint>{};
+}
+
+std::span<const Qty> Accounts::position_curve(OwnerId owner) const {
+    const Account* a = find(owner);
+    return a ? std::span<const Qty>(a->point_qty) : std::span<const Qty>{};
+}
+
+std::span<const Price> Accounts::mark_curve(OwnerId owner) const {
+    const Account* a = find(owner);
+    return a ? std::span<const Price>(a->point_mark) : std::span<const Price>{};
 }
 
 bool Accounts::reconciles(OwnerId owner) const {

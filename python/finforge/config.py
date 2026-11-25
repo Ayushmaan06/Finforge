@@ -103,6 +103,7 @@ class BacktestConfig(_Model):
     strategy: StrategyRef
     equity_interval_s: int | None = Field(default=None, ge=1)  # None: one point per bar
     output_dir: str = "runs"
+    benchmark: bool = True  # also run buy-and-hold of the universe (PLAN §5.9) for the report
 
     @field_validator("start", "end")
     @classmethod

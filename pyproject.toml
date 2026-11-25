@@ -23,6 +23,7 @@ finforge = "finforge.cli:main"
 [dependency-groups]
 dev = [
   "pytest>=8",
+  "empyrical-reloaded>=0.5.10",  # independent cross-check of the metrics, tests only
   "ruff==0.17.5",  # keep in sync with .github/workflows/ci.yml
 ]
 
