@@ -1,0 +1,35 @@
+ts,owner,side,type,tif,price,qty
+# Build a book: asks 101-103, bids 97-99
+1,1,SELL,LIMIT,GTC,101,5
+2,1,SELL,LIMIT,GTC,102,5
+3,2,SELL,LIMIT,GTC,101,3
+4,3,BUY,LIMIT,GTC,99,4
+5,3,BUY,LIMIT,GTC,98,6
+6,4,BUY,LIMIT,GTC,99,2
+7,4,SELL,LIMIT,GTC,103,10
+# Price-time priority: id 1 fills before id 3 at 101; trades at resting price; remainder rests
+8,5,BUY,LIMIT,GTC,105,7
+# Reduce id 2 in place (keeps priority), then reprice id 7 (cancel-and-replace)
+amend,2,4,102
+amend,7,10,102
+# Sweep bids with a market sell; remainder of a market order is cancelled
+9,6,SELL,MARKET,GTC,,15
+# IOC: partial fill then IOC_REMAINDER
+10,7,BUY,LIMIT,IOC,102,20
+# FOK: cannot fill completely -> FOK_UNFILLABLE before any fill
+11,8,SELL,LIMIT,FOK,90,100
+12,8,BUY,LIMIT,GTC,95,3
+13,8,BUY,LIMIT,GTC,94,3
+# FOK that fills across two levels
+14,9,SELL,LIMIT,FOK,94,5
+# Cancels: resting, already terminal, unknown
+cancel,14
+cancel,1
+cancel,999
+# Rejects: zero qty, zero limit price, market with a price
+15,10,BUY,LIMIT,GTC,100,0
+16,10,BUY,LIMIT,GTC,0,1
+17,10,BUY,MARKET,GTC,100,1
+# Leave a final book
+18,11,BUY,LIMIT,GTC,96,2
+19,11,SELL,LIMIT,GTC,104,1

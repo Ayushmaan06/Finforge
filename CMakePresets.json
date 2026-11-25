@@ -26,7 +26,8 @@
       "displayName": "Release",
       "inherits": "base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "FINFORGE_BUILD_BENCH": "ON"
       }
     }
   ],
@@ -51,7 +52,8 @@
         "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
       },
       "execution": {
-        "noTestsAction": "error"
+        "noTestsAction": "error",
+        "jobs": 4
       }
     },
     {
@@ -61,7 +63,8 @@
         "outputOnFailure": true
       },
       "execution": {
-        "noTestsAction": "error"
+        "noTestsAction": "error",
+        "jobs": 4
       }
     }
   ],

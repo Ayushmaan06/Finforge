@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(FINFORGE_BUILD_TESTS "Build the C++ tests" ON)
 option(FINFORGE_BUILD_PYTHON "Build the pybind11 module finforge._engine" OFF)
+option(FINFORGE_BUILD_BENCH "Build the Google Benchmark executables" OFF)
 option(FINFORGE_SANITIZE "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
 if(FINFORGE_SANITIZE)
@@ -19,6 +20,9 @@ if(FINFORGE_SANITIZE)
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
                       -fno-sanitize-recover=all)
   add_link_options(-fsanitize=address,undefined)
+  if(FINFORGE_BUILD_BENCH)
+    message(FATAL_ERROR "Benchmarks under sanitizers measure the sanitizer, not the engine.")
+  endif()
 endif()
 
 # Git SHA is part of the engine version (PLAN.md D6).
