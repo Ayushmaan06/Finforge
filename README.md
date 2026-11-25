@@ -5,8 +5,8 @@ simulation, accounting) driven by Python strategies, with analytics, an API and 
 
 Priorities, in order: **correctness → determinism → reproducibility → clarity → performance → features.**
 
-> Status: Phase 7 (backend, persistence and jobs). [`docs/server.md`](docs/server.md) covers the
-> HTTP API and workers; [`docs/contracts.md`](docs/contracts.md)
+> Status: Phase 8 (research dashboard). [`docs/dashboard.md`](docs/dashboard.md) covers the web
+> UI; [`docs/server.md`](docs/server.md) the HTTP API and workers; [`docs/contracts.md`](docs/contracts.md)
 > has the rules the engine obeys; [`docs/sdk.md`](docs/sdk.md) how to write and run a strategy;
 > [`docs/analytics.md`](docs/analytics.md) reports, comparisons and sweeps;
 > [`docs/data.md`](docs/data.md) describes datasets and replay;
@@ -86,6 +86,17 @@ finforge server worker                           # runs queued backtests
 Upload data, register datasets, queue runs of the built-in strategies, follow progress over SSE,
 cancel, and fetch results and comparisons. See [`docs/server.md`](docs/server.md).
 
+## Dashboard
+
+```bash
+python scripts/e2e_stack.py --port 8000                 # Postgres, API, worker, one-year demo dataset
+cd frontend && npm ci && NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev
+```
+
+Pick a dataset, configure and start a backtest, watch its progress, inspect equity against
+buy-and-hold, drawdown, returns, trades and fills on the price chart, and compare runs with an
+in-sample / out-of-sample split. See [`docs/dashboard.md`](docs/dashboard.md).
+
 ## Benchmarks
 
 ```bash
@@ -121,6 +132,7 @@ a structured report (reject / drop / flag per problem), and the dataset id is a 
 | `examples/` | Backtest configs for the reference strategies |
 | `python/finforge/server/` | FastAPI app, SQLAlchemy models, Alembic migrations, job queue, worker |
 | `docker-compose.yml` | Development PostgreSQL |
+| `frontend/` | Next.js + TypeScript dashboard (typed client generated from OpenAPI, Playwright e2e) |
 | `datasets/fixtures/` | Small synthetic test data, including malformed files |
 | `datasets/specs/` | Dataset specs for the PLAN D5 data |
 | `scripts/` | Data download, fixture generator, CI checks |

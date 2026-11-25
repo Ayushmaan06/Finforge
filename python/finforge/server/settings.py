@@ -27,6 +27,14 @@ class Settings:
     max_attempts: int = field(default_factory=lambda: int(_env("MAX_ATTEMPTS", "2")))
     poll_seconds: float = field(default_factory=lambda: float(_env("POLL_SECONDS", "1")))
     progress_every: int = field(default_factory=lambda: int(_env("PROGRESS_EVERY", "8192")))
+    # Browser origins allowed to call the API (the dashboard); comma-separated.
+    cors_origins: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            o.strip()
+            for o in _env("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+            if o.strip()
+        )
+    )
 
     @property
     def uploads_dir(self) -> Path:

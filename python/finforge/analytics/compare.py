@@ -66,7 +66,28 @@ def _label(run_dir: Path, manifest: dict[str, Any], used: set[str]) -> str:
     return label
 
 
-def compare(run_dirs: list[str | Path], conv: Conventions = DEFAULT_CONVENTIONS) -> Comparison:
+SPLIT_METRICS = ("total_return", "sharpe", "sortino", "max_drawdown", "volatility")
+
+
+def split_performance(
+    ts: np.ndarray, equity: np.ndarray, initial: float, split_ns: int, conv: Conventions
+) -> dict[str, Any]:
+    """Metrics before and after `split_ns`: in-sample from the initial capital, out-of-sample
+    from the equity at the split (the last point before it)."""
+    before = ts < split_ns
+    out: dict[str, Any] = {}
+    is_perf = performance(ts[before], equity[before], initial, conv)
+    start = float(equity[before][-1]) if before.any() else initial
+    oos_perf = performance(ts[~before], equity[~before], start, conv)
+    for k in SPLIT_METRICS:
+        out[f"is_{k}"] = is_perf[k] if before.any() else None
+        out[f"oos_{k}"] = oos_perf[k] if (~before).any() else None
+    return out
+
+
+def compare(
+    run_dirs: list[str | Path], conv: Conventions = DEFAULT_CONVENTIONS, split_ns: int | None = None
+) -> Comparison:
     rows: list[dict[str, Any]] = []
     curves: list[tuple[str, np.ndarray, np.ndarray, float]] = []
     used: set[str] = set()
@@ -105,6 +126,8 @@ def compare(run_dirs: list[str | Path], conv: Conventions = DEFAULT_CONVENTIONS)
                 "fees": m["summary"]["total_fees"],
             }
         )
+        if split_ns is not None:
+            rows[-1].update(split_performance(ts, equity, initial, split_ns, conv))
         days, closes = daily_closes(ts, equity)
         curves.append((label, days, closes, initial))
 

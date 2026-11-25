@@ -23,7 +23,7 @@ datasets/*
 !datasets/specs/
 
 # Backtest run directories (finforge backtest)
-runs/
+/runs/
 
 # Local scratch
 temp/
@@ -31,4 +31,4 @@ temp/
 .idea/
 .DS_Store
 .planning/
-var/
+/var/
