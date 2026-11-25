@@ -98,7 +98,8 @@ Fields: `id`, `owner_id`, `instrument_id`, `side` {BUY, SELL}, `type` {MARKET, L
 ```
 
 - **ORD-1** The only allowed transitions are those in the diagram (plus PARTIALLY_FILLED →
-  PARTIALLY_FILLED on further partial fills). Any other transition is a bug and MUST trip an assertion.
+  PARTIALLY_FILLED on further partial fills, and ACCEPTED → FILLED when a single fill completes
+  the order **(refinement)**). Any other transition is a bug and MUST trip an assertion.
   **Test:** state-machine unit tests; assertion active in all test builds (Phase 1).
 - **ORD-2** Every transition emits exactly one event.
   **Test:** event count equals transition count in randomised runs (Phase 1–2).
@@ -117,7 +118,10 @@ Fields: `id`, `owner_id`, `instrument_id`, `side` {BUY, SELL}, `type` {MARKET, L
   `tif` is ignored for MARKET. **(refinement)**
 - **ORD-7** Amend: reducing quantity (new qty > filled qty, < current qty) keeps queue priority.
   Changing the price or increasing quantity is cancel-and-replace: the old order is CANCELLED (`USER`),
-  a new order with a new `id` and `seq` is submitted, and it loses priority.
+  a new order with a new `id` and `seq` is submitted, and it loses priority. "new qty" is the new
+  **total** quantity, so the replacement is for `new qty − filled` **(refinement)**. An amend to the
+  same price and quantity is a no-op; `new qty ≤ filled` is refused `INVALID_QTY` and a price ≤ 0
+  `INVALID_PRICE`, without changing the order.
   **Test:** priority tests in the book (Phase 1).
 - **ORD-8** Quantity conservation: at all times `filled + remaining + cancelled_qty = qty`.
   **Test:** invariant checked after every operation in randomised runs (Phase 1).
@@ -315,6 +319,8 @@ PLAN.md §15 v1.2.
 | CND-5, QTE-3 | Volume cap / quote size shared across a strategy's orders in `seq` order |
 | QTE-4 | Quote fills are all taker in v1 |
 | §9, ACC-3 | Ledger stores cost basis (Money), not average price; release truncates, zero position releases all |
+| ORD-1 | ACCEPTED → FILLED is legal (one fill completes the order) — Phase 1 |
+| ORD-7 | Amend qty is the new total; replacement is for `new qty − filled`; same price+qty is a no-op — Phase 1 |
 | ACC-6 | Quote/Book mid mark is `floor((bid+ask)/2)` |
 
 ## 13. Open points (decide by the phase shown)
