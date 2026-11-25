@@ -1,0 +1,19 @@
+# Moving-average crossover on BTCUSDT 1-minute bars, January 2024.
+# Needs the spot sample dataset:
+#   python scripts/fetch_binance.py --bars
+#   finforge data ingest datasets/specs/binance-spot-1m.json --out datasets/normalized/binance-spot-1m
+dataset: datasets/normalized/binance-spot-1m
+universe: [BTCUSDT]
+start: 2024-01-01T00:00:00Z
+end: 2024-02-01T00:00:00Z
+initial_capital: 10000            # USDT
+execution:
+  model: candle
+  slippage: {kind: fixed_bps, bps: 1}
+  latency_ns: 1
+fees: {maker_bps: 2, taker_bps: 10}
+risk: {allow_short: false, max_leverage: 1}
+seed: 42
+strategy:
+  name: ma_cross
+  params: {fast: 30, slow: 240, qty: "0.1"}

@@ -27,6 +27,7 @@ class WorkingOrderModel : public ExecutionModel {
 
     [[nodiscard]] std::span<const BookEvent> events() const override { return events_; }
     [[nodiscard]] const Order* order(OrderId id) const override;
+    [[nodiscard]] std::size_t order_count() const override { return orders_.size(); }
     [[nodiscard]] const InstrumentRegistry& registry() const override { return registry_; }
     [[nodiscard]] std::optional<Price> mark(InstrumentId id) const override;
 

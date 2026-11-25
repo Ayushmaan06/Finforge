@@ -4,7 +4,7 @@ FetchContent_Declare(pybind11
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(pybind11)
 
-pybind11_add_module(_engine module.cpp)
+pybind11_add_module(_engine module.cpp backtest.cpp)
 target_link_libraries(_engine PRIVATE finforge::engine)
 
 install(TARGETS _engine LIBRARY DESTINATION finforge)

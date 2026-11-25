@@ -1,0 +1,13 @@
+# Time-series momentum on BTCUSDT and ETHUSDT 1-minute bars, 2024: hold while the last day's
+# return is positive, re-checked every 6 hours.
+dataset: datasets/normalized/binance-spot-1m
+universe: [BTCUSDT, ETHUSDT]
+start: 2024-01-01T00:00:00Z
+end: 2025-01-01T00:00:00Z
+initial_capital: 100000
+execution: {model: candle, slippage: {kind: fixed_bps, bps: 1}}
+fees: {maker_bps: 2, taker_bps: 10}
+seed: 2
+strategy:
+  name: momentum
+  params: {lookback: 1440, rebalance: 360, qty: "0.5"}

@@ -1,0 +1,13 @@
+# Pairs trading ETHUSDT vs BTCUSDT (log-price spread z-score), January-February 2024. Needs shorts.
+dataset: datasets/normalized/binance-spot-1m
+universe: [BTCUSDT, ETHUSDT]
+start: 2024-01-01T00:00:00Z
+end: 2024-03-01T00:00:00Z
+initial_capital: 100000
+execution: {model: candle}
+fees: {taker_bps: 10}
+risk: {allow_short: true, max_leverage: 2}
+seed: 3
+strategy:
+  name: pairs
+  params: {a: ETHUSDT, b: BTCUSDT, lookback: 720, entry_z: 2.5, exit_z: 0.5, beta: 1.0, qty_a: "5", qty_b: "0.4"}

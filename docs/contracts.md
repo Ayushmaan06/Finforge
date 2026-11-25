@@ -404,6 +404,6 @@ PLAN.md §15 v1.2.
 | Data pipeline | Exact timestamp and decimal conversion; bars emitted at close; malformed data reported per fixture; merge order; bounded-memory replay | TIME-1,2,4,6, INS-1,2, EVT-2, VER-1 | pytest + fixtures, gtest | 3 |
 | Execution models | Fill rules per model; boundary cases; TIF; caps; look-ahead | CND-*, QTE-*, BKM-1, FEE-1, SLP-*, OP-1 | Golden cases, look-ahead tests | 4 |
 | Ledger | Reconciliation exact; replay reproduces state; pre-trade check order | ACC-1…11, OP-3 | Golden, scripted end-to-end, 1000 seeded runs | 4 |
-| Strategy SDK | No look-ahead; off-tick/off-lot rejected at conversion | TIME-3, INS-3 | pytest | 5 |
+| Strategy SDK | No look-ahead (`history()` ≤ now); off-tick/off-lot rejected at conversion; same config ⇒ same journal and artefacts; reference strategies reconcile | TIME-3, INS-3, DET-1, ACC-10/11 | pytest (crafted fixtures, real sample locally) | 5 |
 | Analytics | Every metric equals fixture and independent library | MET-1…10 | pytest + fixtures | 6 |
 | Versioning | Manifest contains all three versions | VER-1 | pytest | 0 (engine version), 5 |
