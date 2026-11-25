@@ -4,7 +4,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from finforge.sdk import Bar, Context, Strategy
+from finforge.sdk import QTY_SCHEMA, Bar, Context, Strategy, params_schema
 
 
 class MeanReversion(Strategy):
@@ -30,6 +30,16 @@ class MeanReversion(Strategy):
         "qty": "1",
         "allow_short": False,
     }
+
+    params_schema: ClassVar[dict[str, Any]] = params_schema(
+        {
+            "lookback": {"type": "integer", "minimum": 2},
+            "entry_z": {"type": "number", "exclusiveMinimum": 0},
+            "exit_z": {"type": "number", "minimum": 0},
+            "qty": QTY_SCHEMA,
+            "allow_short": {"type": "boolean"},
+        }
+    )
 
     def setup(self) -> None:
         self.lookback = int(self.params["lookback"])

@@ -1,0 +1,23 @@
+# Development database for finforge.server (PLAN Phase 7).
+#   docker compose up -d db
+#   export FINFORGE_DATABASE_URL=postgresql+psycopg://finforge:finforge@localhost:5432/finforge
+#   finforge server migrate && finforge server api & finforge server worker
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: finforge
+      POSTGRES_PASSWORD: finforge  # development only
+      POSTGRES_DB: finforge
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - finforge-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  finforge-pg:

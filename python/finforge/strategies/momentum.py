@@ -2,7 +2,7 @@
 
 from typing import Any, ClassVar
 
-from finforge.sdk import Bar, Context, Strategy
+from finforge.sdk import QTY_SCHEMA, Bar, Context, Strategy, params_schema
 
 
 class TimeSeriesMomentum(Strategy):
@@ -26,6 +26,15 @@ class TimeSeriesMomentum(Strategy):
         "qty": "1",
         "allow_short": False,
     }
+
+    params_schema: ClassVar[dict[str, Any]] = params_schema(
+        {
+            "lookback": {"type": "integer", "minimum": 1},
+            "rebalance": {"type": "integer", "minimum": 1},
+            "qty": QTY_SCHEMA,
+            "allow_short": {"type": "boolean"},
+        }
+    )
 
     def setup(self) -> None:
         self.lookback = int(self.params["lookback"])

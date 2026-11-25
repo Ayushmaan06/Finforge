@@ -10,6 +10,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -73,7 +74,7 @@ class Backtest {
     Backtest(const py::list& instruments, const std::string& model,
              const std::string& slippage_kind, std::int64_t slippage_rate,
              std::int64_t participation, std::int64_t latency_ns, std::int64_t start_ns,
-             std::int64_t equity_interval_ns)
+             std::int64_t equity_interval_ns, std::uint64_t progress_every)
         : dispatcher_(*this) {
         InstrumentRegistry reg = registry_from(instruments);
         if (model == "candle") {
@@ -100,6 +101,15 @@ class Backtest {
         SimConfig sc;
         sc.start = Timestamp{start_ns};
         sc.latency_ns = latency_ns;
+        // Cancellation stops the run between two events (the simulator checks the flag every
+        // 1024 events); progress reports go to an optional Python callback.
+        sc.cancel_flag = &cancel_flag_;
+        sc.cancel_check_every = 1024;
+        sc.progress_every = progress_every;
+        sc.on_progress = [this](const SimProgress& p) {
+            if (progress_cb_.is_none()) return;
+            if (progress_cb_(p.events, p.now.value()).cast<bool>()) request_cancel();
+        };
         sim_ = std::make_unique<Simulator>(*model_, journal_, sc);
     }
 
@@ -132,6 +142,11 @@ class Backtest {
         replay_.add_feed(parse_kind(kind), InstrumentId{instrument_id}, *providers_.back());
     }
 
+    // `callback(events_processed, sim_now_ns)` every `progress_every` events; returning True
+    // requests cancellation.
+    void set_progress(const py::object& callback) { progress_cb_ = callback; }
+    void request_cancel() { cancel_flag_.store(true, std::memory_order_relaxed); }
+
     std::string run() {
         if (!has_handler_ || !has_account_) {
             throw std::logic_error("set_handler and open_account before run()");
@@ -141,6 +156,7 @@ class Backtest {
         sim_->attach_accounts(*accounts_);
         sim_->attach_source(replay_);
         const RunStatus s = sim_->run();
+        if (s == RunStatus::Cancelled) return "cancelled";
         return s == RunStatus::Completed ? "completed" : "stopped";
     }
 
@@ -344,6 +360,8 @@ class Backtest {
         return *l;
     }
 
+    std::atomic<bool> cancel_flag_{false};  // before sim_, which points to it
+    py::object progress_cb_ = py::none();
     std::unique_ptr<WorkingOrderModel> model_;
     std::unique_ptr<Accounts> accounts_;
     Journal journal_;
@@ -416,10 +434,13 @@ void register_backtest(py::module_& m) {
     m.def("enum_names", &enum_names, "Names of the engine enums, indexed by their numeric value.");
     py::class_<Backtest>(m, "Backtest", "One Mode A backtest driving a Python strategy handler.")
         .def(py::init<const py::list&, const std::string&, const std::string&, std::int64_t,
-                      std::int64_t, std::int64_t, std::int64_t, std::int64_t>(),
+                      std::int64_t, std::int64_t, std::int64_t, std::int64_t, std::uint64_t>(),
              py::arg("instruments"), py::arg("model"), py::arg("slippage_kind") = "none",
              py::arg("slippage_rate") = 0, py::arg("participation") = 0, py::arg("latency_ns") = 1,
-             py::arg("start_ns") = 0, py::arg("equity_interval_ns") = 0)
+             py::arg("start_ns") = 0, py::arg("equity_interval_ns") = 0,
+             py::arg("progress_every") = 0)
+        .def("set_progress", &Backtest::set_progress, py::arg("callback"))
+        .def("request_cancel", &Backtest::request_cancel)
         .def("set_handler", &Backtest::set_handler, py::arg("handler"))
         .def("open_account", &Backtest::open_account, py::arg("cash"), py::arg("maker"),
              py::arg("taker"), py::arg("min_fee"), py::arg("allow_short"), py::arg("max_position"),

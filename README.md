@@ -5,7 +5,8 @@ simulation, accounting) driven by Python strategies, with analytics, an API and 
 
 Priorities, in order: **correctness → determinism → reproducibility → clarity → performance → features.**
 
-> Status: Phase 6 (analytics and experiment comparison). [`docs/contracts.md`](docs/contracts.md)
+> Status: Phase 7 (backend, persistence and jobs). [`docs/server.md`](docs/server.md) covers the
+> HTTP API and workers; [`docs/contracts.md`](docs/contracts.md)
 > has the rules the engine obeys; [`docs/sdk.md`](docs/sdk.md) how to write and run a strategy;
 > [`docs/analytics.md`](docs/analytics.md) reports, comparisons and sweeps;
 > [`docs/data.md`](docs/data.md) describes datasets and replay;
@@ -74,6 +75,17 @@ finforge compare runs/a runs/b
 finforge sweep examples/ma_cross_sweep.yaml
 ```
 
+## Run it as a service
+
+```bash
+uv pip install -e ".[server]" && docker compose up -d db
+finforge server migrate && finforge server api   # OpenAPI docs at http://localhost:8000/docs
+finforge server worker                           # runs queued backtests
+```
+
+Upload data, register datasets, queue runs of the built-in strategies, follow progress over SSE,
+cancel, and fetch results and comparisons. See [`docs/server.md`](docs/server.md).
+
 ## Benchmarks
 
 ```bash
@@ -107,6 +119,8 @@ a structured report (reject / drop / flag per problem), and the dataset id is a 
 | `python/bindings/` | pybind11 module `finforge._engine` |
 | `python/finforge/` | Python package: `sdk`, `backtest`, `config`, `strategies`, `data`, `cli` |
 | `examples/` | Backtest configs for the reference strategies |
+| `python/finforge/server/` | FastAPI app, SQLAlchemy models, Alembic migrations, job queue, worker |
+| `docker-compose.yml` | Development PostgreSQL |
 | `datasets/fixtures/` | Small synthetic test data, including malformed files |
 | `datasets/specs/` | Dataset specs for the PLAN D5 data |
 | `scripts/` | Data download, fixture generator, CI checks |
