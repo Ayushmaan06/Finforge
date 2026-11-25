@@ -5,8 +5,9 @@ simulation, accounting) driven by Python strategies, with analytics, an API and 
 
 Priorities, in order: **correctness → determinism → reproducibility → clarity → performance → features.**
 
-> Status: Phase 4 (execution models and portfolio ledger). [`docs/contracts.md`](docs/contracts.md)
-> has the rules the engine obeys; [`docs/data.md`](docs/data.md) describes datasets and replay;
+> Status: Phase 5 (Python strategy SDK and end-to-end backtest). [`docs/contracts.md`](docs/contracts.md)
+> has the rules the engine obeys; [`docs/sdk.md`](docs/sdk.md) how to write and run a strategy;
+> [`docs/data.md`](docs/data.md) describes datasets and replay;
 > [`docs/execution.md`](docs/execution.md) the Candle/Quote/Book models and exact accounting;
 > [`docs/benchmarks.md`](docs/benchmarks.md) has the performance baseline.
 
@@ -54,6 +55,16 @@ Poisson-arrival agents trade on one book through the discrete-event simulator. T
 with the journal's SHA-256, the run fingerprint: the same seed gives the same hash in every build
 (`docs/contracts.md` §10).
 
+## Backtest a Python strategy
+
+```bash
+finforge backtest examples/ma_cross.yaml      # needs the sample dataset (see Data below)
+```
+
+A run writes `manifest.json` (config, dataset id, strategy hash, engine version, journal hash,
+status) plus `orders.parquet`, `fills.parquet` and `equity.parquet`. The same config always gives
+the same journal hash and byte-identical files. See [`docs/sdk.md`](docs/sdk.md).
+
 ## Benchmarks
 
 ```bash
@@ -85,7 +96,8 @@ a structured report (reject / drop / flag per problem), and the dataset id is a 
 | `engine/apps/` | `finforge-sim` CLI and its demo script |
 | `engine/bench/` | Google Benchmark workloads |
 | `python/bindings/` | pybind11 module `finforge._engine` |
-| `python/finforge/` | Python package (`finforge.data`: ingest, validate, replay) |
+| `python/finforge/` | Python package: `sdk`, `backtest`, `config`, `strategies`, `data`, `cli` |
+| `examples/` | Backtest configs for the reference strategies |
 | `datasets/fixtures/` | Small synthetic test data, including malformed files |
 | `datasets/specs/` | Dataset specs for the PLAN D5 data |
 | `scripts/` | Data download, fixture generator, CI checks |

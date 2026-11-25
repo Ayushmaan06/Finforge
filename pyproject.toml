@@ -13,7 +13,12 @@ requires-python = ">=3.12"
 dependencies = [
   "numpy>=2.0",
   "pyarrow>=17",
+  "pydantic>=2.6",
+  "pyyaml>=6",
 ]
+
+[project.scripts]
+finforge = "finforge.cli:main"
 
 [dependency-groups]
 dev = [
@@ -36,6 +41,7 @@ FINFORGE_BUILD_TESTS = "OFF"
 
 [tool.pytest.ini_options]
 testpaths = ["python/tests"]
+pythonpath = ["python/tests"]
 addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
 
 [tool.ruff]

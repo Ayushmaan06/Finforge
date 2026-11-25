@@ -61,6 +61,8 @@ class ExecutionModel {
     // Events from the last call, in order.
     [[nodiscard]] virtual std::span<const BookEvent> events() const = 0;
     [[nodiscard]] virtual const Order* order(OrderId id) const = 0;
+    // Orders submitted so far, including rejected ones; ids are 1..order_count() (NUM-7).
+    [[nodiscard]] virtual std::size_t order_count() const = 0;
     [[nodiscard]] virtual const InstrumentRegistry& registry() const = 0;
     [[nodiscard]] std::size_t instrument_count() const { return registry().size(); }
     // Live book, where the model has one (Mode B); nullptr otherwise.
@@ -117,6 +119,7 @@ class BookModel final : public ExecutionModel {
         return engine_.events();
     }
     [[nodiscard]] const Order* order(OrderId id) const override { return engine_.order(id); }
+    [[nodiscard]] std::size_t order_count() const override { return engine_.order_count(); }
     [[nodiscard]] const InstrumentRegistry& registry() const override { return engine_.registry(); }
     [[nodiscard]] const OrderBook* book(InstrumentId id) const override {
         return id.value() < engine_.registry().size() ? &engine_.book(id) : nullptr;

@@ -1,0 +1,12 @@
+# Mean reversion (z-score vs rolling mean) on ETHUSDT 1-minute bars, 2024.
+dataset: datasets/normalized/binance-spot-1m
+universe: [ETHUSDT]
+start: 2024-01-01T00:00:00Z
+end: 2025-01-01T00:00:00Z
+initial_capital: 10000
+execution: {model: candle, slippage: {kind: half_spread, bps: 2}}
+fees: {maker_bps: 2, taker_bps: 10}
+seed: 1
+strategy:
+  name: mean_reversion
+  params: {lookback: 240, entry_z: 3.0, exit_z: 0.0, qty: "1"}

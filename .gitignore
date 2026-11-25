@@ -22,6 +22,9 @@ datasets/*
 !datasets/README.md
 !datasets/specs/
 
+# Backtest run directories (finforge backtest)
+runs/
+
 # Local scratch
 temp/
 .vscode/
