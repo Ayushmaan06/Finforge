@@ -108,7 +108,8 @@ void Journal::record_input(const EventKey& key, const Event& event) {
                        put_i64(t.ts.value());
                        put_i64(t.price.value());
                        put_i64(t.qty.value());
-                       put_u8(static_cast<std::uint8_t>(t.aggressor_side));
+                       // 0 buy, 1 sell, 2 unknown
+                       put_u8(t.aggressor_known ? static_cast<std::uint8_t>(t.aggressor_side) : 2);
                    },
                    [&](const TimerEvent& t) {
                        begin(RecordType::Timer);

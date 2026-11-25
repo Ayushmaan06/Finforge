@@ -64,6 +64,7 @@ struct TradePrint {
     Price price;
     Qty qty;
     Side aggressor_side = Side::Buy;
+    bool aggressor_known = true;  // false when the source does not say; aggressor_side is then Buy
 
     friend bool operator==(const TradePrint&, const TradePrint&) = default;
 };

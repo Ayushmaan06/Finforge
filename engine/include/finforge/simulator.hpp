@@ -16,6 +16,7 @@
 #include "finforge/events.hpp"
 #include "finforge/execution_model.hpp"
 #include "finforge/journal.hpp"
+#include "finforge/replay.hpp"
 #include "finforge/strategy.hpp"
 
 namespace finforge {
@@ -27,12 +28,12 @@ struct SimProgress {
 };
 
 struct SimConfig {
-    Timestamp start;
+    Timestamp start{};
     std::int64_t latency_ns = 1;            // EVT-3: >= 1
     std::int64_t snapshot_interval_ns = 0;  // 0 = no snapshots
     // Called after every `progress_every` processed events (0 = never).
     std::uint64_t progress_every = 0;
-    std::function<void(const SimProgress&)> on_progress;
+    std::function<void(const SimProgress&)> on_progress{};
     // Checked before an event whenever events_processed % cancel_check_every == 0. Setting it stops
     // the run between two events, so all state is consistent.
     const std::atomic<bool>* cancel_flag = nullptr;
@@ -63,6 +64,13 @@ class Simulator {
     // if that time is not after the current clock once the run has started.
     void schedule_market_data(const MarketData& md);
 
+    // Streams market data from `source` (e.g. a Replay) instead of queueing it all up front. At
+    // most one source event is queued at a time; the next is pulled when it is processed, so memory
+    // stays bounded. The source must yield events in non-decreasing emit time, none before the
+    // start time; otherwise run() throws std::invalid_argument. Not owned; at most one source;
+    // attach before the run starts.
+    void attach_source(MarketDataSource& source);
+
     RunStatus run(std::uint64_t max_events = kUnlimited);
     // Processes every event with ts <= limit, then advances the clock to `limit`.
     RunStatus run_until(Timestamp limit, std::uint64_t max_events = kUnlimited);
@@ -86,6 +94,7 @@ class Simulator {
     StrategyContext& context_of(OwnerId owner);
     void push(Timestamp ts, InstrumentId instrument, Event event);
     void schedule_snapshot(Timestamp ts);
+    void pull_source();
 
     ExecutionModel& model_;
     Journal& journal_;
@@ -101,6 +110,9 @@ class Simulator {
     std::uint64_t processed_ = 0;
     bool started_ = false;
     bool processing_ = false;  // inside process(): EVT-4 applies to anything scheduled
+    MarketDataSource* source_ = nullptr;
+    EventKey source_key_{};  // key of the queued source event
+    bool source_queued_ = false;
 };
 
 }  // namespace finforge

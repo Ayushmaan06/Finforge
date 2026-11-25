@@ -1,5 +1,6 @@
 #include "finforge/simulator.hpp"
 
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <variant>
@@ -81,6 +82,28 @@ void Simulator::schedule_market_data(const MarketData& md) {
     std::visit([&](const auto& m) { push(t, instrument_of(md), Event{m}); }, md);
 }
 
+void Simulator::attach_source(MarketDataSource& source) {
+    if (started_) throw std::logic_error("attach_source after the run started");
+    if (source_ != nullptr) throw std::logic_error("a market data source is already attached");
+    source_ = &source;
+}
+
+void Simulator::pull_source() {
+    MarketData md;
+    if (!source_->next(md)) return;
+    const Timestamp t = emit_time(md);
+    // Keys must keep increasing (EVT-4): the source may not go back in time, nor back to a lower
+    // instrument id at the same time.
+    const EventKey probe{t, EventClass::MarketData, instrument_of(md),
+                         Seq{std::numeric_limits<Seq::rep>::max()}};
+    if (t < now_ || (processing_ && probe < current_key_)) {
+        throw std::invalid_argument("market data source is not in emit order");
+    }
+    source_key_ =
+        std::visit([&](const auto& m) { return queue_.push(t, instrument_of(md), Event{m}); }, md);
+    source_queued_ = true;
+}
+
 void Simulator::push(Timestamp ts, InstrumentId instrument, Event event) {
     const EventKey key = queue_.push(ts, instrument, std::move(event));
     // EVT-4: an event handler may only schedule events after itself.
@@ -97,6 +120,7 @@ void Simulator::start_if_needed() {
         schedule_snapshot(Timestamp{config_.start.value() + config_.snapshot_interval_ns});
     }
     for (std::size_t i = 0; i < strategies_.size(); ++i) strategies_[i]->on_start(*contexts_[i]);
+    if (source_ != nullptr) pull_source();
 }
 
 bool Simulator::cancelled() const {
@@ -150,6 +174,12 @@ void Simulator::process(QueuedEvent ev) {
     current_key_ = ev.key;
     now_ = ev.key.ts;
     processing_ = true;
+    // Queue the next source event before handling this one, so a snapshot at this time still sees
+    // a non-empty queue and keeps the run going.
+    if (source_queued_ && ev.key == source_key_) {
+        source_queued_ = false;
+        pull_source();
+    }
 
     if (std::holds_alternative<SnapshotEvent>(ev.event)) {
         std::vector<const OrderBook*> books;

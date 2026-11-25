@@ -5,8 +5,9 @@ simulation, accounting) driven by Python strategies, with analytics, an API and 
 
 Priorities, in order: **correctness → determinism → reproducibility → clarity → performance → features.**
 
-> Status: Phase 2 (event engine and exchange simulation). [`docs/contracts.md`](docs/contracts.md) has the
-> rules the engine obeys; [`docs/benchmarks.md`](docs/benchmarks.md) has the performance baseline.
+> Status: Phase 3 (historical data pipeline). [`docs/contracts.md`](docs/contracts.md) has the
+> rules the engine obeys; [`docs/data.md`](docs/data.md) describes datasets and replay;
+> [`docs/benchmarks.md`](docs/benchmarks.md) has the performance baseline.
 
 ## Requirements
 
@@ -61,8 +62,19 @@ build/release/engine/finforge_bench --benchmark_repetitions=5 --benchmark_report
 
 ## Data
 
-Raw market data is not committed. Download it with `scripts/fetch_binance.sh` (Binance public data,
-see PLAN.md D5).
+Raw market data is not committed. `scripts/fetch_binance.py` downloads Binance public data (PLAN.md
+D5) and verifies every file's checksum. `finforge.data` turns it into a validated, versioned dataset
+and replays it through the engine:
+
+```bash
+python scripts/fetch_binance.py --bars   # spot 1m klines, BTCUSDT + ETHUSDT, 2023–2024 (~95 MB)
+python -m finforge.data ingest datasets/specs/binance-spot-1m.json --out datasets/normalized/binance-spot-1m
+python -m finforge.data replay datasets/normalized/binance-spot-1m
+```
+
+Prices and quantities are converted from text to integer ticks and lots exactly. Validation returns
+a structured report (reject / drop / flag per problem), and the dataset id is a content hash. See
+[`docs/data.md`](docs/data.md).
 
 ## Layout
 
@@ -72,7 +84,10 @@ see PLAN.md D5).
 | `engine/apps/` | `finforge-sim` CLI and its demo script |
 | `engine/bench/` | Google Benchmark workloads |
 | `python/bindings/` | pybind11 module `finforge._engine` |
-| `python/finforge/` | Python package |
+| `python/finforge/` | Python package (`finforge.data`: ingest, validate, replay) |
+| `datasets/fixtures/` | Small synthetic test data, including malformed files |
+| `datasets/specs/` | Dataset specs for the PLAN D5 data |
+| `scripts/` | Data download, fixture generator, CI checks |
 | `docs/` | Product docs: how the system **is** |
 
 ## License
