@@ -1,0 +1,52 @@
+{
+  "name": "binance-spot-1m-2023-2024",
+  "notes": [
+    "Binance spot 1-minute klines for BTCUSDT and ETHUSDT, 2023-01 .. 2024-12 (PLAN.md D5).",
+    "Fetch with: python scripts/fetch_binance.py --bars",
+    "BTCUSDT lot_size is 0.000001: some 2024 volumes have 6 decimals (finer than the 0.00001 used earlier).",
+    "BAD_CLOSE_TIME is flagged, not rejected: the bar before the 2023-03-24 trading halt closes early in the source."
+  ],
+  "instruments": [
+    {
+      "symbol": "BTCUSDT",
+      "asset_class": "spot",
+      "quote_currency": "USDT",
+      "tick_size": "0.01",
+      "lot_size": "0.000001",
+      "min_qty": 1,
+      "contract_multiplier": 1
+    },
+    {
+      "symbol": "ETHUSDT",
+      "asset_class": "spot",
+      "quote_currency": "USDT",
+      "tick_size": "0.01",
+      "lot_size": "0.0001",
+      "min_qty": 1,
+      "contract_multiplier": 1
+    }
+  ],
+  "policies": {
+    "bars": {
+      "BAD_CLOSE_TIME": "flag"
+    }
+  },
+  "sources": [
+    {
+      "format": "binance_klines",
+      "symbol": "BTCUSDT",
+      "interval": "1m",
+      "paths": [
+        "../raw/binance/spot/klines/BTCUSDT/1m/BTCUSDT-1m-202[34]-*.zip"
+      ]
+    },
+    {
+      "format": "binance_klines",
+      "symbol": "ETHUSDT",
+      "interval": "1m",
+      "paths": [
+        "../raw/binance/spot/klines/ETHUSDT/1m/ETHUSDT-1m-202[34]-*.zip"
+      ]
+    }
+  ]
+}

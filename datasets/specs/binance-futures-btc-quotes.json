@@ -1,0 +1,43 @@
+{
+  "name": "binance-usdm-btcusdt-2024-03-01-02",
+  "notes": [
+    "Binance USD-M futures bookTicker and 1-minute klines for BTCUSDT, 2024-03-01 .. 2024-03-02 (PLAN.md D5).",
+    "INS-4: the perpetual is treated as a spot-like instrument (multiplier 1, funding ignored).",
+    "Quote timestamps are bookTicker transaction_time (matching engine time).",
+    "Fetch with: python scripts/fetch_binance.py --quotes",
+    "OFF_TICK quotes are dropped: 276 of 67.1M source rows have asks off the 0.10 tick (e.g. 61431.87)."
+  ],
+  "instruments": [
+    {
+      "symbol": "BTCUSDT-PERP",
+      "asset_class": "perpetual",
+      "quote_currency": "USDT",
+      "tick_size": "0.10",
+      "lot_size": "0.001",
+      "min_qty": 1,
+      "contract_multiplier": 1
+    }
+  ],
+  "policies": {
+    "quotes": {
+      "OFF_TICK": "drop"
+    }
+  },
+  "sources": [
+    {
+      "format": "binance_klines",
+      "symbol": "BTCUSDT-PERP",
+      "interval": "1m",
+      "paths": [
+        "../raw/binance/futures/klines/BTCUSDT/1m/BTCUSDT-1m-2024-03-0[12].zip"
+      ]
+    },
+    {
+      "format": "binance_bookticker",
+      "symbol": "BTCUSDT-PERP",
+      "paths": [
+        "../raw/binance/futures/bookTicker/BTCUSDT/BTCUSDT-bookTicker-2024-03-0[12].zip"
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ add_library(finforge_engine STATIC
   src/events.cpp
   src/instrument.cpp
   src/journal.cpp
+  src/replay.cpp
   src/matching_engine.cpp
   src/order.cpp
   src/order_book.cpp
@@ -44,6 +45,7 @@ if(FINFORGE_BUILD_TESTS)
     tests/instrument_test.cpp
     tests/matching_engine_test.cpp
     tests/order_test.cpp
+    tests/replay_test.cpp
     tests/rng_test.cpp
     tests/sha256_test.cpp
     tests/simulator_test.cpp

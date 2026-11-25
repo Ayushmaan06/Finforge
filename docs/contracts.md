@@ -31,7 +31,8 @@ on purpose (with a PLAN.md §15 entry if it changes a §5 default).
 - **NUM-2** Every instrument defines the integer `money_per_tick_lot = tick_size × lot_size / 1e-8`.
   It MUST be an exact integer ≥ 1; otherwise the instrument is rejected when the registry loads.
   **(refinement)** Examples: BTCUSDT spot (tick 0.01, lot 0.00001) → 10; ETHUSDT spot (0.01, 0.0001) → 100;
-  BTCUSDT USD-M futures (0.1, 0.001) → 10 000.
+  BTCUSDT USD-M futures (0.1, 0.001) → 10 000. The Phase 3 dataset registers BTCUSDT spot with lot
+  0.000001 (→ 1), because some 2024 kline volumes have six decimals.
   **Test:** unit tests for accept/reject of tick/lot pairs (Phase 1).
 - **NUM-3** Notional MUST be computed as `price_ticks × qty_lots × money_per_tick_lot × contract_multiplier`
   in 128-bit arithmetic, then range-checked into `int64` Money.
@@ -67,6 +68,10 @@ on purpose (with a PLAN.md §15 entry if it changes a §5 default).
 - **TIME-6** Source timestamps are converted at ingestion only. Binance klines/bookTicker for 2023–2024
   are in milliseconds; Binance switched spot files to microseconds from 2025-01-01. The ingester MUST
   detect the unit per file and reject ambiguous files rather than guess. **(refinement)**
+  Detection: a value's unit is the one whose plausible range (2000-01-01 to 2100-01-01) contains it;
+  the s / ms / µs / ns ranges do not overlap. The first usable value fixes the file's unit; any value
+  outside that unit's range is `TS_UNIT_AMBIGUOUS` and the dataset is rejected. Binance formats allow
+  only ms and µs (docs/data.md).
   **Test:** fixtures in both units plus one ambiguous file (Phase 3).
 
 ## 3. Instruments
@@ -152,7 +157,10 @@ ORD-8 and MAT-5/7/8 after every operation; all under ASan/UBSan.
   and `seq` is a global per-run insertion counter. **(refinement:** `instrument_id` and `seq` make the
   key a total order.)
 - **EVT-2** Multi-instrument data with equal timestamps is merged by `instrument_id`, then source row
-  order (deterministic k-way merge).
+  order (deterministic k-way merge). **(refinement:** the merge key is `(emit time, instrument_id,
+  feed, row)`, where a feed is one (kind, instrument) file and feeds of one instrument are ordered
+  bars < quotes < trades. Replay streams the merged data into the queue one event at a time, so at
+  equal `(ts, class, instrument_id)` the merge order is the processing order.)
 - **EVT-3** An order submitted while handling an event at time `t` arrives at the execution model at
   `t + latency`. Default `latency = 1 ns`, configurable, MUST be ≥ 1 ns. Therefore an order can never
   trade against the event that triggered it.
@@ -267,7 +275,9 @@ and one test for their order.
   **Test:** fixed seed ⇒ fixed known output sequence, checked against constants (Phase 2).
 - **DET-3** Iteration order never depends on pointer values or `unordered_*` iteration order when it
   can affect output. **Test:** determinism test under ASan (different addresses) (Phase 2).
-- **VER-1** Dataset version = SHA-256 of the normalised Parquet file(s). Strategy version = SHA-256 of
+- **VER-1** Dataset version = SHA-256 of the normalised content **(refinement:** of the logical
+  column values, schema version and registry, not of the Parquet bytes, which change with the
+  pyarrow version; docs/data.md §5). Strategy version = SHA-256 of
   the strategy source plus name and parameters. Engine version = `<semver>+<git sha>.<build type>`
   (`finforge.engine_version()`, Phase 0). All three go in every run manifest.
 
@@ -286,7 +296,11 @@ key    : i64 ts | u8 class | u32 instrument_id | u64 seq          (EVT-1 key)
 - **Input records** (each processed queue event, in processing order), payload starts with `key`:
   `1 Submit` (owner u32, client_ref u64, instrument u32, side u8, type u8, tif u8, price i64,
   qty i64) · `2 Cancel` (owner u32, order u64) · `3 Amend` (owner u32, order u64, qty i64,
-  price i64) · `4 Bar` · `5 Quote` · `6 TradePrint` · `7 Timer` (owner u32, tag u64) ·
+  price i64) · `4 Bar` (instrument u32, open_time i64, close_time i64, open i64, high i64, low i64,
+  close i64, volume i64) · `5 Quote` (instrument u32, ts i64, bid i64, bid_qty i64, ask i64,
+  ask_qty i64) · `6 TradePrint` (instrument u32, ts i64, price i64, qty i64, aggressor_side u8:
+  0 buy, 1 sell, 2 unknown — added in Phase 3; no earlier journal contains a 2, so the format
+  version is unchanged) · `7 Timer` (owner u32, tag u64) ·
   `8 Snapshot` (per book: instrument u32, has_bid u8, bid i64, bid_qty i64, has_ask u8, ask i64,
   ask_qty i64).
 - **Output records** (what the execution model emitted, right after the input that caused them):
@@ -352,6 +366,9 @@ PLAN.md §15 v1.2.
 | ORD-1 | ACCEPTED → FILLED is legal (one fill completes the order) — Phase 1 |
 | ORD-7 | Amend qty is the new total; replacement is for `new qty − filled`; same price+qty is a no-op — Phase 1 |
 | ACC-6 | Quote/Book mid mark is `floor((bid+ask)/2)` |
+| TIME-6 | Unit detected from non-overlapping plausible ranges; first usable value fixes the file's unit — Phase 3 |
+| EVT-2 | Merge key `(emit time, instrument_id, feed, row)`; feeds of one instrument: bars < quotes < trades — Phase 3 |
+| VER-1 | Dataset id hashes the logical content, not Parquet bytes — Phase 3 |
 
 ## 13. Open points (decide by the phase shown)
 
@@ -370,7 +387,7 @@ PLAN.md §15 v1.2.
 | Order book | Price-time priority; resting price; never crossed; no empty levels; no overfill; matches `ReferenceBook` | MAT-1…8 | Unit, differential, randomised, sanitizers | 1 |
 | Event engine | Total order; monotonic clock; latency ≥ 1 ns; no same-event fills | EVT-1…4, TIME-5 | Unit + property | 2 |
 | Determinism | Same inputs ⇒ same journal hash; PRNG fixed sequence | DET-1…3 | Determinism test in CI | 2, 5 |
-| Data pipeline | Exact timestamp conversion; bar visibility; malformed data rejected | TIME-1,2,4,6, INS-1,2 | pytest + fixtures | 3 |
+| Data pipeline | Exact timestamp and decimal conversion; bars emitted at close; malformed data reported per fixture; merge order; bounded-memory replay | TIME-1,2,4,6, INS-1,2, EVT-2, VER-1 | pytest + fixtures, gtest | 3 |
 | Execution models | Fill rules per model; boundary cases; TIF; caps | CND-*, QTE-*, BKM-1, FEE-1, SLP-* | Golden cases | 4 |
 | Ledger | Reconciliation exact; replay reproduces state; pre-trade check order | ACC-1…11 | Golden + randomised | 4 |
 | Strategy SDK | No look-ahead; off-tick/off-lot rejected at conversion | TIME-3, INS-3 | pytest | 5 |
