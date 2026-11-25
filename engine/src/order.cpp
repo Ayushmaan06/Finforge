@@ -93,6 +93,8 @@ std::string_view to_string(CancelReason r) {
             return "FOK_UNFILLABLE";
         case CancelReason::MarketRemainder:
             return "MARKET_REMAINDER";
+        case CancelReason::InsufficientCashAtFill:
+            return "INSUFFICIENT_CASH_AT_FILL";
         case CancelReason::EndOfRun:
             return "END_OF_RUN";
     }

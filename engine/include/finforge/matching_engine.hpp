@@ -4,6 +4,8 @@
 // (contracts.md §4, §5). One OrderBook per instrument; ids are per run and dense (NUM-7).
 
 #include <cstddef>
+#include <functional>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -22,8 +24,15 @@ struct NewOrder {
     Tif tif = Tif::Gtc;  // ignored for MARKET (ORD-6)
     Price price;         // must be Price{0} for MARKET
     Qty qty;
-    Timestamp ts;
+    Timestamp ts;                     // arrival at the execution model
+    std::optional<Timestamp> sent{};  // when the strategy sent it; unset = same as ts
 };
+
+// Basic order validation shared by every model: instrument, quantity, price (INS-3, NUM-6, ORD-6).
+RejectReason validate_new_order(const InstrumentRegistry& registry, const NewOrder& order);
+
+// Extra pre-trade check run after validate_new_order passes (ACC-9: cash, limits, leverage).
+using OrderGate = std::function<RejectReason(const NewOrder&)>;
 
 // Result of cancel/amend. `reason == None` means the action was applied.
 struct ActionResult {
@@ -48,7 +57,14 @@ class MatchingEngine {
     // - same price and qty: no-op;
     // - otherwise cancel-and-replace: old order CANCELLED (USER), a new order for
     //   new_qty - filled at new_price is submitted with a new id and seq.
-    ActionResult amend(OrderId id, Qty new_qty, Price new_price, Timestamp ts);
+    ActionResult amend(OrderId id, Qty new_qty, Price new_price, Timestamp ts,
+                       std::optional<Timestamp> sent = std::nullopt);
+
+    // Cancels every open order with `reason` (OP-3: END_OF_RUN). Events: events().
+    void cancel_all(CancelReason reason);
+
+    // Runs on every new order, including amend replacements; an empty gate accepts everything.
+    void set_gate(OrderGate gate) { gate_ = std::move(gate); }
 
     // Events emitted by the last submit/cancel/amend, in order.
     [[nodiscard]] std::span<const BookEvent> events() const { return events_; }
@@ -70,7 +86,6 @@ class MatchingEngine {
     const Order& at(OrderId id) const { return orders_[id.value() - 1]; }
 
     OrderId submit_impl(const NewOrder& order);
-    RejectReason validate(const NewOrder& order) const;
     void set_status(Order& o, OrderStatus to);
     void cancel_remaining(Order& o, CancelReason reason);
 
@@ -92,6 +107,7 @@ class MatchingEngine {
     void after_operation() const;
 
     InstrumentRegistry registry_;
+    OrderGate gate_;
     std::vector<OrderBook> books_;
     std::vector<Order> orders_;  // index = id - 1
     std::vector<BookEvent> events_;

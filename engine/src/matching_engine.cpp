@@ -50,7 +50,18 @@ ActionResult MatchingEngine::cancel(OrderId id) {
     return {};
 }
 
-ActionResult MatchingEngine::amend(OrderId id, Qty new_qty, Price new_price, Timestamp ts) {
+void MatchingEngine::cancel_all(CancelReason reason) {
+    events_.clear();
+    for (Order& o : orders_) {
+        if (is_terminal(o.status)) continue;
+        with_levels(books_[o.instrument.value()], o.side, [&](auto& levels) { unlink(levels, o); });
+        cancel_remaining(o, reason);
+    }
+    after_operation();
+}
+
+ActionResult MatchingEngine::amend(OrderId id, Qty new_qty, Price new_price, Timestamp ts,
+                                   std::optional<Timestamp> sent) {
     events_.clear();
     if (id.value() == 0 || id.value() > orders_.size()) return {RejectReason::UnknownOrder, {}};
     Order& o = at(id);
@@ -78,7 +89,7 @@ ActionResult MatchingEngine::amend(OrderId id, Qty new_qty, Price new_price, Tim
     // ORD-7: cancel-and-replace. Copy what the new order needs first: submit_impl appends to
     // orders_, which may reallocate and invalidate `o`.
     const NewOrder replacement{o.owner,   o.instrument,       o.side, o.type, o.tif,
-                               new_price, new_qty - o.filled, ts};
+                               new_price, new_qty - o.filled, ts,     sent};
     with_levels(book, o.side, [&](auto& levels) { unlink(levels, o); });
     cancel_remaining(o, CancelReason::User);
     const OrderId new_id = submit_impl(replacement);
@@ -99,8 +110,11 @@ OrderId MatchingEngine::submit_impl(const NewOrder& in) {
     o.price = in.price;
     o.qty = in.qty;
     o.submit_ts = in.ts;
+    o.sent_ts = in.sent.value_or(in.ts);
 
-    if (const RejectReason r = validate(in); r != RejectReason::None) {
+    RejectReason r = validate_new_order(registry_, in);
+    if (r == RejectReason::None && gate_) r = gate_(in);
+    if (r != RejectReason::None) {
         o.reject_reason = r;
         set_status(o, OrderStatus::Rejected);
         return id;
@@ -132,8 +146,8 @@ OrderId MatchingEngine::submit_impl(const NewOrder& in) {
     return id;
 }
 
-RejectReason MatchingEngine::validate(const NewOrder& in) const {
-    const Instrument* inst = registry_.find(in.instrument);
+RejectReason validate_new_order(const InstrumentRegistry& registry, const NewOrder& in) {
+    const Instrument* inst = registry.find(in.instrument);
     if (inst == nullptr) return RejectReason::UnknownInstrument;       // INS-3
     if (in.qty < inst->spec.min_qty) return RejectReason::InvalidQty;  // NUM-6, INS-3
     if (in.type == OrderType::Market) {

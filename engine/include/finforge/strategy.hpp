@@ -12,6 +12,8 @@
 
 namespace finforge {
 
+class Ledger;
+
 struct OrderRequest {
     InstrumentId instrument;
     Side side = Side::Buy;
@@ -41,6 +43,9 @@ class Context {
 
     // Mode B: the live book (public information). nullptr in models without a book.
     [[nodiscard]] virtual const OrderBook* book(InstrumentId id) const = 0;
+
+    // The strategy's own account (cash, positions, P&L), or nullptr without accounts.
+    [[nodiscard]] virtual const Ledger* account() const = 0;
 };
 
 struct OwnOrderUpdate {

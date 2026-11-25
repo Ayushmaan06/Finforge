@@ -5,8 +5,9 @@ simulation, accounting) driven by Python strategies, with analytics, an API and 
 
 Priorities, in order: **correctness → determinism → reproducibility → clarity → performance → features.**
 
-> Status: Phase 3 (historical data pipeline). [`docs/contracts.md`](docs/contracts.md) has the
-> rules the engine obeys; [`docs/data.md`](docs/data.md) describes datasets and replay;
+> Status: Phase 4 (execution models and portfolio ledger). [`docs/contracts.md`](docs/contracts.md)
+> has the rules the engine obeys; [`docs/data.md`](docs/data.md) describes datasets and replay;
+> [`docs/execution.md`](docs/execution.md) the Candle/Quote/Book models and exact accounting;
 > [`docs/benchmarks.md`](docs/benchmarks.md) has the performance baseline.
 
 ## Requirements

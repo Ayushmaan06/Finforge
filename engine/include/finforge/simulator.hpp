@@ -12,6 +12,7 @@
 #include <memory>
 #include <vector>
 
+#include "finforge/accounts.hpp"
 #include "finforge/event_queue.hpp"
 #include "finforge/events.hpp"
 #include "finforge/execution_model.hpp"
@@ -71,6 +72,16 @@ class Simulator {
     // attach before the run starts.
     void attach_source(MarketDataSource& source);
 
+    // Accounts for the strategies (contracts §9): advanced before every event, snapshotted after
+    // market data, reconciled by finish(). `accounts` must be built on this simulator's model.
+    // Not owned; attach before the run starts.
+    void attach_accounts(Accounts& accounts);
+
+    // End of run (OP-3): cancels every open order with END_OF_RUN (events journaled and
+    // delivered), then Accounts::finish (final snapshot, ACC-10, ACC-11). Anything a strategy
+    // schedules from these last callbacks is dropped. Call once, after run().
+    void finish();
+
     RunStatus run(std::uint64_t max_events = kUnlimited);
     // Processes every event with ts <= limit, then advances the clock to `limit`.
     RunStatus run_until(Timestamp limit, std::uint64_t max_events = kUnlimited);
@@ -111,6 +122,8 @@ class Simulator {
     bool started_ = false;
     bool processing_ = false;  // inside process(): EVT-4 applies to anything scheduled
     MarketDataSource* source_ = nullptr;
+    Accounts* accounts_ = nullptr;
+    bool finished_ = false;
     EventKey source_key_{};  // key of the queued source event
     bool source_queued_ = false;
 };
