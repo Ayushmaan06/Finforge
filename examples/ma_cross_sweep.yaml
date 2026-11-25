@@ -1,0 +1,9 @@
+# 10-point grid for the MA crossover on BTCUSDT, January 2024: in-sample Jan 1-20, out-of-sample
+# Jan 20-31. Each point runs twice (IS and OOS) on a process pool.
+base: examples/ma_cross.yaml
+grid:
+  fast: [10, 20, 30, 45, 60]
+  slow: [180, 360]
+holdout: 2024-01-20T00:00:00Z
+processes: 4
+output_dir: runs/sweeps

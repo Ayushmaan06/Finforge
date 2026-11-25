@@ -5,8 +5,9 @@ simulation, accounting) driven by Python strategies, with analytics, an API and 
 
 Priorities, in order: **correctness → determinism → reproducibility → clarity → performance → features.**
 
-> Status: Phase 5 (Python strategy SDK and end-to-end backtest). [`docs/contracts.md`](docs/contracts.md)
+> Status: Phase 6 (analytics and experiment comparison). [`docs/contracts.md`](docs/contracts.md)
 > has the rules the engine obeys; [`docs/sdk.md`](docs/sdk.md) how to write and run a strategy;
+> [`docs/analytics.md`](docs/analytics.md) reports, comparisons and sweeps;
 > [`docs/data.md`](docs/data.md) describes datasets and replay;
 > [`docs/execution.md`](docs/execution.md) the Candle/Quote/Book models and exact accounting;
 > [`docs/benchmarks.md`](docs/benchmarks.md) has the performance baseline.
@@ -64,6 +65,14 @@ finforge backtest examples/ma_cross.yaml      # needs the sample dataset (see Da
 A run writes `manifest.json` (config, dataset id, strategy hash, engine version, journal hash,
 status) plus `orders.parquet`, `fills.parquet` and `equity.parquet`. The same config always gives
 the same journal hash and byte-identical files. See [`docs/sdk.md`](docs/sdk.md).
+
+Completed runs also get `report.json` (Sharpe, Sortino, drawdown, VaR, FIFO trades, exposure,
+buy-and-hold benchmark). Compare runs and sweep parameters with in-sample / out-of-sample splits:
+
+```bash
+finforge compare runs/a runs/b
+finforge sweep examples/ma_cross_sweep.yaml
+```
 
 ## Benchmarks
 

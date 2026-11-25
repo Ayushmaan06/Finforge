@@ -217,6 +217,9 @@ MEASURE = textwrap.dedent(
                 return int(line.split()[1])
 
     ds = Dataset(sys.argv[1])
+    # Warm-up: the first Parquet read lazily imports modules (pyarrow pulls in pandas when it is
+    # installed), which would otherwise count as replay memory.
+    next(ds.iter_chunks(ds.files[0], 16))
     before = hwm_kib()
     r = replay(ds, chunk_rows=int(sys.argv[2]))
     after = hwm_kib()

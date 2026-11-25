@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from finforge.sdk import Strategy
+from finforge.strategies.buy_and_hold import BuyAndHold
 from finforge.strategies.ma_cross import MovingAverageCrossover
 from finforge.strategies.mean_reversion import MeanReversion
 from finforge.strategies.momentum import TimeSeriesMomentum
@@ -13,7 +14,7 @@ from finforge.strategies.pairs import PairsTrading
 
 BUILTIN: dict[str, type[Strategy]] = {
     cls.name: cls
-    for cls in (MovingAverageCrossover, MeanReversion, TimeSeriesMomentum, PairsTrading)
+    for cls in (BuyAndHold, MovingAverageCrossover, MeanReversion, TimeSeriesMomentum, PairsTrading)
 }
 
 
@@ -42,6 +43,7 @@ def resolve(name: str) -> type[Strategy]:
 
 __all__ = [
     "BUILTIN",
+    "BuyAndHold",
     "MeanReversion",
     "MovingAverageCrossover",
     "PairsTrading",

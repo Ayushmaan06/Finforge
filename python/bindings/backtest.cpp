@@ -294,6 +294,18 @@ class Backtest {
         d["total_fees"] = to_numpy(fees);
         d["borrow_costs"] = to_numpy(borrow);
         d["gross_exposure"] = to_numpy(gross);
+        // Per-instrument position (lots) and mark (ticks), shape (points, instruments).
+        const auto k = static_cast<py::ssize_t>(model_->instrument_count());
+        const auto qty = accounts_->position_curve(kOwner);
+        const auto mark = accounts_->mark_curve(kOwner);
+        py::array_t<std::int64_t> q({static_cast<py::ssize_t>(ts.size()), k});
+        py::array_t<std::int64_t> mk({static_cast<py::ssize_t>(ts.size()), k});
+        for (std::size_t i = 0; i < qty.size(); ++i) {
+            q.mutable_data()[i] = qty[i].value();
+            mk.mutable_data()[i] = mark[i].value();
+        }
+        d["position"] = q;
+        d["mark"] = mk;
         return d;
     }
 
