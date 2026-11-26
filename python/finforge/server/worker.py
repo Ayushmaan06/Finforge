@@ -45,10 +45,13 @@ def _child(
         nonlocal cancel
         if os.getppid() != parent_pid:  # the worker died: stop instead of running unsupervised
             return True
-        conn.send(("progress", events, now))
-        while conn.poll():
-            if conn.recv()[0] == "cancel":
-                cancel = True
+        try:
+            conn.send(("progress", events, now))
+            while conn.poll():
+                if conn.recv()[0] == "cancel":
+                    cancel = True
+        except (EOFError, OSError):  # it died between the check above and the send: same thing.
+            return True  # (raising here would fail the run instead of cancelling it cleanly)
         return cancel
 
     try:
