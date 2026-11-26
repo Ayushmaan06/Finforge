@@ -128,11 +128,13 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build and start the stack (as the README says)
         run: GIT_SHA=$(git rev-parse --short=12 HEAD) docker compose up -d --build
-      - name: Wait for the demo dataset, the API and the dashboard
+      - name: Wait for the dashboard and the demo dataset
+        # Poll the outcome, not the one-shot container: `docker compose wait demo` fails with
+        # "no containers" once demo has already exited. A failed demo never registers the dataset.
         run: |
-          docker compose wait demo  # one-shot: fails the step if it failed
-          for i in $(seq 90); do
-            curl -sf localhost:8000/health && curl -sf -o /dev/null localhost:3000 && exit 0
+          for i in $(seq 120); do
+            curl -sf -o /dev/null localhost:3000 \
+              && curl -sf localhost:8000/datasets | grep -q demo-365d-1m && exit 0
             sleep 2
           done
           exit 1
