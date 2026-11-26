@@ -48,11 +48,15 @@ export default function RunView({ params }: { params: Promise<{ id: string }> })
       es.close();
       reload();
     });
+    // Dropped connections are retried by EventSource itself; only a fatal error closes it.
+    let retry: ReturnType<typeof setTimeout> | undefined;
     es.onerror = () => {
-      es.close();
-      setTimeout(reload, 1000);
+      if (es.readyState === EventSource.CLOSED) retry = setTimeout(reload, 1000);
     };
-    return () => es.close();
+    return () => {
+      es.close();
+      clearTimeout(retry);
+    };
   }, [id, finished, reload]);
 
   async function cancel() {
@@ -189,7 +193,7 @@ function Results({ run }: { run: Run }) {
               onRendered={() => setRenderMs(performance.now() - fetchStart.current)}
             />
             <p className="muted" style={{ fontSize: 12 }} data-testid="equity-render" data-render-ms={renderMs ?? ""}>
-              {int(equity.equity.length)} of {int(equity.points_total)} points (LTTB)
+              {int(equity.equity.length)} of {int(equity.points_total)} points (min/max downsampled)
               {renderMs !== null && ` · loaded and drawn in ${Math.round(renderMs)} ms`}
             </p>
           </>
@@ -301,10 +305,13 @@ function PriceChart({ run }: { run: Run }) {
 function Trades({ id }: { id: string }) {
   const PAGE = 50;
   const [offset, setOffset] = useState(0);
-  const [data, setData] = useState<{ total: number; trades: Record<string, unknown>[] }>();
-  useEffect(() => {
-    api.GET("/runs/{run_id}/trades", { params: { path: { run_id: id }, query: { offset, limit: PAGE } } }).then((r) => setData(ok(r)));
-  }, [id, offset]);
+  // useApi drops responses for a page that is no longer current (fast Next/Previous clicks).
+  const q = useApi(
+    async () => ok(await api.GET("/runs/{run_id}/trades", { params: { path: { run_id: id }, query: { offset, limit: PAGE } } })),
+    `${id}:${offset}`,
+  );
+  const data = q.data;
+  if (q.error && !data) return <ErrorBox error={q.error} />;
   if (!data) return null;
   return (
     <section className="panel" aria-label="Trades">

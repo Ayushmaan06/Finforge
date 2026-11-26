@@ -85,7 +85,10 @@ ActionResult WorkingOrderModel::amend(OrderId id, Qty new_qty, Price new_price, 
     Order& o = at(id);
     if (is_terminal(o.status)) return {RejectReason::AlreadyTerminal, {}};
     if (new_qty <= o.filled) return {RejectReason::InvalidQty, {}};
-    if (new_price <= Price{0}) return {RejectReason::InvalidPrice, {}};
+    // ORD-7: a waiting MARKET order (Candle) keeps price 0; any other price is refused (ORD-6).
+    const bool bad_price =
+        o.type == OrderType::Market ? new_price != Price{0} : new_price <= Price{0};
+    if (bad_price) return {RejectReason::InvalidPrice, {}};
 
     if (new_price == o.price && new_qty <= o.qty) {
         if (new_qty == o.qty) return {};

@@ -322,5 +322,20 @@ TEST(Accounts, BookModelMakerAndTakerFees) {
     EXPECT_EQ(model.order(r.new_order)->reject_reason, RejectReason::InsufficientCash);
 }
 
+TEST(Accounts, ACC9_BookAmendIsCheckedWithoutTheOrderItReplaces) {
+    BookModel model(test::make_registry());
+    Accounts acc(model);
+    acc.open(OwnerId{1}, AccountConfig{.initial_cash = Money{1'000 * U}});
+    const OrderId id = model.submit(NewOrder{OwnerId{1}, kInst, Side::Buy, OrderType::Limit,
+                                             Tif::Gtc, Price{50}, Qty{10}, Timestamp{1}});
+    ASSERT_EQ(acc.ledger(OwnerId{1})->reserved_cash(), Money{500 * U});
+    // 15 × 50 = 750 U fits 1000 U once the replaced order's 500 U is released.
+    const ActionResult r = model.amend(id, Qty{15}, Price{50}, Timestamp{2}, Timestamp{2});
+    ASSERT_TRUE(r.ok());
+    EXPECT_EQ(model.order(r.new_order)->status, OrderStatus::Accepted);
+    EXPECT_EQ(acc.ledger(OwnerId{1})->reserved_cash(), Money{750 * U});
+    EXPECT_TRUE(acc.reconciles(OwnerId{1}));
+}
+
 }  // namespace
 }  // namespace finforge

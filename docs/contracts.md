@@ -126,7 +126,9 @@ Fields: `id`, `owner_id`, `instrument_id`, `side` {BUY, SELL}, `type` {MARKET, L
   a new order with a new `id` and `seq` is submitted, and it loses priority. "new qty" is the new
   **total** quantity, so the replacement is for `new qty − filled` **(refinement)**. An amend to the
   same price and quantity is a no-op; `new qty ≤ filled` is refused `INVALID_QTY` and a price ≤ 0
-  `INVALID_PRICE`, without changing the order.
+  `INVALID_PRICE`, without changing the order. A MARKET order still waiting for its bar (Candle)
+  keeps price 0: any other price is refused `INVALID_PRICE` (ORD-6). Account checks (ACC-9) on a
+  replacement no longer count the order it replaces.
   **Test:** priority tests in the book (Phase 1).
 - **ORD-8** Quantity conservation: at all times `filled + remaining + cancelled_qty = qty`.
   **Test:** invariant checked after every operation in randomised runs (Phase 1).

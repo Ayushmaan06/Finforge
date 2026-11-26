@@ -54,19 +54,21 @@ class Dispatcher final : public Strategy {
         on_bar_ = h.attr("on_bar");
         on_quote_ = h.attr("on_quote");
         on_update_ = h.attr("on_order_update");
+        on_amended_ = h.attr("on_order_amended");
         on_fill_ = h.attr("on_fill");
     }
 
     void on_start(Context& c) override;
     void on_market_data(Context& c, const MarketData& md) override;
     void on_order_update(Context& c, const OwnOrderUpdate& u) override;
+    void on_order_amended(Context& c, const OrderAmended& a) override;
     void on_fill(Context& c, const Trade& t) override;
 
     std::unordered_map<std::uint64_t, std::uint64_t> client_ref;  // order id -> client ref
 
   private:
     Backtest& bt_;
-    py::object handler_, on_start_, on_bar_, on_quote_, on_update_, on_fill_;
+    py::object handler_, on_start_, on_bar_, on_quote_, on_update_, on_amended_, on_fill_;
 };
 
 class Backtest {
@@ -398,6 +400,12 @@ void Dispatcher::on_order_update(Context& c, const OwnOrderUpdate& u) {
                u.update.filled.value(), u.update.remaining.value(),
                std::string(to_string(u.update.reject_reason)),
                std::string(to_string(u.update.cancel_reason)));
+}
+
+// ORD-7 in-place reduction: no status change, so no OrderUpdate; the handle still needs it.
+void Dispatcher::on_order_amended(Context& c, const OrderAmended& a) {
+    const Backtest::Scope s(bt_, c);
+    on_amended_(a.order.value(), a.qty.value(), a.remaining.value());
 }
 
 void Dispatcher::on_fill(Context& c, const Trade& t) {

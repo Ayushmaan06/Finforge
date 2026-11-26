@@ -46,8 +46,9 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev    # http://localhost:3000
   - Each bucket keeps its lowest and highest point, so peaks and troughs survive exactly.
   - The method is one vectorised pass: a one-year minute curve (525 600 points) reduces in about
     20 ms. LTTB is also available; it took about 40–75 ms here.
-  - The drawdown is computed on the full curve **before** downsampling, and the max-drawdown and
-    peak points are always kept, so the chart and the metric agree.
+  - The drawdown is computed on the full curve **before** downsampling, from the initial capital
+    like the report's metric, and the trough and its peak are always kept, so the chart and the
+    metric agree.
   - Fill times are kept in the price series, so markers sit on real points.
 - **Typed client generated from OpenAPI.** The API got Pydantic response models, so its OpenAPI
   document is precise. `npm run gen:api` runs `scripts/dump_openapi.py` and

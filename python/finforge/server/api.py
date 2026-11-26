@@ -158,7 +158,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.engine = engine
-    if settings.cors_origins:  # the dashboard (frontend/) calls the API from the browser
+
+    @app.middleware("http")
+    async def _upload_cap(request: Request, call_next):
+        # Starlette spools a multipart file to disk before the handler runs, so the cap has to be
+        # checked on Content-Length first. save_upload still enforces it on the file's bytes.
+        if request.method == "POST" and request.url.path == "/uploads":
+            n = request.headers.get("content-length", "")
+            if not n.isdigit():
+                return JSONResponse(status_code=411, content={"detail": "Content-Length required"})
+            if int(n) > settings.max_upload_bytes + (64 << 10):  # + multipart framing
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": f"upload exceeds {settings.max_upload_bytes} bytes"},
+                )
+        return await call_next(request)
+
+    # The dashboard (frontend/) calls the API from the browser. Added last, so outermost: the
+    # 411/413 replies above still carry CORS headers.
+    if settings.cors_origins:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=list(settings.cors_origins),
@@ -395,7 +413,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get(
         "/runs/{run_id}/equity",
         tags=["runs"],
-        summary="Equity, drawdown and benchmark, downsampled with LTTB.",
+        summary="Equity, drawdown and benchmark, downsampled (min/max per bucket).",
     )
     def equity(
         run_id: uuid.UUID, session: DB, max_points: Annotated[int, Query(ge=3, le=100_000)] = 2_000
@@ -405,8 +423,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ts, eq = t.column("ts").to_numpy(), t.column("equity_real").to_numpy()
         if len(ts) == 0:
             return EquityOut(ts=[], equity=[], drawdown=[], benchmark=None, points_total=0)
-        dd = eq / np.maximum.accumulate(eq) - 1.0  # on the full curve, before downsampling
-        idx = downsample(ts, eq, max_points, keep=[int(np.argmin(dd)), int(np.argmax(eq))])
+        # On the full curve, before downsampling, and from the initial capital like
+        # metrics.max_drawdown, so the chart's deepest point matches the report.
+        peak = np.maximum.accumulate(np.concatenate(([float(run.config["initial_capital"])], eq)))
+        dd = eq / peak[1:] - 1.0
+        trough = int(np.argmin(dd))
+        keep = [trough, int(np.argmax(eq[: trough + 1]))]  # the episode's peak
+        idx = downsample(ts, eq, max_points, keep=keep)
         bench = None
         bpath = Path(run.artefact_dir) / "benchmark" / "equity.parquet"
         if bpath.exists():
@@ -446,7 +469,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get(
         "/runs/{run_id}/prices",
         tags=["runs"],
-        summary="Price of one instrument over the run (LTTB) with the run's fills as markers.",
+        summary="Price of one instrument over the run (downsampled), the run's fills as markers.",
     )
     def prices(
         run_id: uuid.UUID,
@@ -522,9 +545,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         summary="Server-sent events: progress and status until the run is finished.",
     )
     def events(
-        run_id: uuid.UUID, session: DB, poll: Annotated[float, Query(ge=0.05, le=10)] = 0.5
+        run_id: uuid.UUID, poll: Annotated[float, Query(ge=0.05, le=10)] = 0.5
     ) -> StreamingResponse:
-        rid = _run(session, run_id).id
+        # Not the DB dependency: it would hold a pooled connection open for the whole stream.
+        with sessions() as s:
+            rid = _run(s, run_id).id
 
         def stream() -> Iterator[str]:
             last: tuple | None = None

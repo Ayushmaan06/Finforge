@@ -124,8 +124,8 @@ class CancelOut(BaseModel):
 
 
 class EquityOut(BaseModel):
-    """Downsampled (LTTB) equity; the drawdown is computed on the full curve first, and the points
-    of the maximum drawdown and of the equity peak are always kept."""
+    """Downsampled equity (min/max per bucket); the drawdown is computed on the full curve first,
+    from the initial capital, and the trough and peak of the maximum drawdown are always kept."""
 
     ts: list[int]
     equity: list[float]

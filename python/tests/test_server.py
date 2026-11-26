@@ -254,6 +254,9 @@ def test_trust_boundary(db_url: str, tmp_path: Path) -> None:
     with TestClient(create_app(settings)) as client:
         big = io.BytesIO(b"a,b\n" + b"1,2\n" * 20_000)
         assert client.post("/uploads", files={"file": ("x.csv", big)}).status_code == 413
+        # Far over the cap: refused on Content-Length, before Starlette spools the body.
+        huge = client.post("/uploads", files={"file": ("x.csv", b"1,2\n" * 50_000)})
+        assert huge.status_code == 413 and "exceeds" in huge.json()["detail"]
         assert (
             client.post("/uploads", files={"file": ("x.csv", b"\x00\x01\x02binary")}).status_code
             == 415
