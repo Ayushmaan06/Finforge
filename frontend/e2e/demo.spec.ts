@@ -8,7 +8,7 @@ import { expect, test, type Page } from "@playwright/test";
 // Next.js keeps recently visited routes mounted but hidden (React Activity), so locators use roles
 // or filter on visibility.
 
-const API = "http://127.0.0.1:8765";
+const API = process.env.E2E_API_URL ?? "http://127.0.0.1:8765"; // docker compose: :8000
 const FIXTURES = path.resolve(__dirname, "../../datasets/fixtures");
 
 async function startBacktest(page: Page, datasetId: string, fast: string, slow: string): Promise<string> {

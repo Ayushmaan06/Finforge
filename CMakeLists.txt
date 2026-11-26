@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(finforge VERSION 0.1.0 LANGUAGES CXX)
+project(finforge VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,17 +25,20 @@ if(FINFORGE_SANITIZE)
   endif()
 endif()
 
-# Git SHA is part of the engine version (PLAN.md D6).
-find_package(Git QUIET)
-set(FINFORGE_GIT_SHA "unknown")
-if(GIT_FOUND)
-  execute_process(
-    COMMAND ${GIT_EXECUTABLE} rev-parse --short=12 HEAD
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    OUTPUT_VARIABLE _sha OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE _sha_rc ERROR_QUIET)
-  if(_sha_rc EQUAL 0 AND _sha)
-    set(FINFORGE_GIT_SHA "${_sha}")
+# Git SHA is part of the engine version (PLAN.md D6). Builds without .git (the Docker image) pass
+# it in: -DFINFORGE_GIT_SHA=<sha>.
+if(NOT FINFORGE_GIT_SHA)
+  find_package(Git QUIET)
+  set(FINFORGE_GIT_SHA "unknown")
+  if(GIT_FOUND)
+    execute_process(
+      COMMAND ${GIT_EXECUTABLE} rev-parse --short=12 HEAD
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      OUTPUT_VARIABLE _sha OUTPUT_STRIP_TRAILING_WHITESPACE
+      RESULT_VARIABLE _sha_rc ERROR_QUIET)
+    if(_sha_rc EQUAL 0 AND _sha)
+      set(FINFORGE_GIT_SHA "${_sha}")
+    endif()
   endif()
 endif()
 

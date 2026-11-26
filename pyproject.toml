@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "finforge"
-version = "0.1.0"
+version = "1.0.0"
 description = "Market simulation and research platform: C++20 engine, Python research layer."
 readme = "README.md"
 license = "MIT"
