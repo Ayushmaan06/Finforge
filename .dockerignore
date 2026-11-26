@@ -1,0 +1,17 @@
+.git
+.github
+.planning
+.venv
+.pytest_cache
+.ruff_cache
+.vscode
+build
+var
+runs
+temp
+datasets
+docs
+examples
+scripts
+frontend
+**/__pycache__

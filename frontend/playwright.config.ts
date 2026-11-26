@@ -5,6 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
 const API_PORT = 8765;
 const WEB_PORT = 3100;
 const PY = process.env.FINFORGE_PYTHON ?? "../.venv/bin/python";
+// E2E_BASE_URL: test a stack that is already running (docker compose) instead of starting one.
+const EXTERNAL = process.env.E2E_BASE_URL;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -15,11 +17,11 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
-    baseURL: `http://127.0.0.1:${WEB_PORT}`,
+    baseURL: EXTERNAL ?? `http://127.0.0.1:${WEB_PORT}`,
     trace: "retain-on-failure",
     ...devices["Desktop Chrome"],
   },
-  webServer: [
+  webServer: EXTERNAL ? undefined : [
     {
       command: `${PY} ../scripts/e2e_stack.py --port ${API_PORT}`,
       url: `http://127.0.0.1:${API_PORT}/health`,

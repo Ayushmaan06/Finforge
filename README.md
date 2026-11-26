@@ -5,20 +5,50 @@ simulation, accounting) driven by Python strategies, with analytics, an API and 
 
 Priorities, in order: **correctness → determinism → reproducibility → clarity → performance → features.**
 
-> Status: Phase 8 (research dashboard). [`docs/dashboard.md`](docs/dashboard.md) covers the web
-> UI; [`docs/server.md`](docs/server.md) the HTTP API and workers; [`docs/contracts.md`](docs/contracts.md)
-> has the rules the engine obeys; [`docs/sdk.md`](docs/sdk.md) how to write and run a strategy;
-> [`docs/analytics.md`](docs/analytics.md) reports, comparisons and sweeps;
-> [`docs/data.md`](docs/data.md) describes datasets and replay;
-> [`docs/execution.md`](docs/execution.md) the Candle/Quote/Book models and exact accounting;
-> [`docs/benchmarks.md`](docs/benchmarks.md) has the performance baseline.
+> Status: **v1.0.0**. See [`CHANGELOG.md`](CHANGELOG.md).
 
-## Requirements
+| Read | For |
+|---|---|
+| [`docs/tutorial.md`](docs/tutorial.md) | your first strategy, step by step |
+| [`docs/architecture.md`](docs/architecture.md) | how the pieces fit and why |
+| [`docs/contracts.md`](docs/contracts.md) | the rules the engine obeys (numbers, time, fills, accounting, metrics) |
+| [`docs/sdk.md`](docs/sdk.md) · [`docs/analytics.md`](docs/analytics.md) | strategy SDK reference · reports, comparisons, sweeps |
+| [`docs/data.md`](docs/data.md) · [`docs/execution.md`](docs/execution.md) | datasets and replay · the Candle/Quote/Book models |
+| [`docs/server.md`](docs/server.md) · [`docs/dashboard.md`](docs/dashboard.md) | HTTP API and workers · the web UI |
+| [`docs/benchmarks.md`](docs/benchmarks.md) | measured performance and how to reproduce it |
+
+## Try it: the whole stack in one command
+
+Needs only Docker (with Compose v2):
+
+```bash
+git clone https://github.com/Ayushmaan06/Finforge.git && cd Finforge
+docker compose up --build        # first build: a few minutes (compiles the C++ engine)
+```
+
+Open **http://localhost:3000**. The stack has PostgreSQL, the API (http://localhost:8000/docs), a
+worker, the dashboard, and a one-year synthetic 1-minute dataset called `demo-365d-1m`. This is
+**Demo 1**:
+1. **New backtest:** pick `demo-365d-1m` and `ma_cross`.
+2. Set the parameters, capital, fees, slippage and execution model, then start. Watch progress live.
+3. Inspect equity against buy-and-hold, drawdown, returns, trades on the price chart, and the risk
+   and execution statistics.
+4. Start a second parameter set, then **Compare** them, with an in-sample / out-of-sample split.
+
+Stop with `docker compose down` (add `-v` to delete the database and stored runs). Everything
+listens on 127.0.0.1 only; there is no authentication.
+
+The image has no `.git`, so runs record the engine version as `1.0.0+unknown`. To record the
+commit as well (PLAN D6), build with `GIT_SHA=$(git rev-parse --short=12 HEAD) docker compose up
+--build`.
+
+## Requirements (development)
 
 Linux (WSL2 Ubuntu 24.04 is the primary dev environment), GCC 13+ or Clang 17+, CMake ≥ 3.28,
-Ninja, and [`uv`](https://docs.astral.sh/uv/) with Python 3.12.
+Ninja, and [`uv`](https://docs.astral.sh/uv/) with Python 3.12. The dashboard needs Node.js
+(`frontend/.nvmrc`).
 
-## Quickstart
+## Quickstart (development)
 
 ```bash
 # C++ engine: Debug build with ASan/UBSan, then tests
@@ -31,9 +61,13 @@ cmake --workflow --preset release
 uv venv --python 3.12
 uv pip install -e . --group dev
 source .venv/bin/activate && pytest
+
+# Also the API tests: the server extra and a PostgreSQL (each test creates its own database)
+uv pip install -e ".[server]" --group dev && docker compose up -d --wait db
+FINFORGE_TEST_DATABASE_URL=postgresql+psycopg://finforge:finforge@localhost:5432/finforge pytest
 ```
 
-## Order book demo (`finforge-sim`)
+## Demo 2: the order book (`finforge-sim`)
 
 Runs an order script against one instrument and prints every event and the final book:
 
@@ -58,6 +92,9 @@ with the journal's SHA-256, the run fingerprint: the same seed gives the same ha
 (`docs/contracts.md` §10).
 
 ## Backtest a Python strategy
+
+New here? [`docs/tutorial.md`](docs/tutorial.md) writes, runs, compares and sweeps a strategy on
+synthetic data in about ten minutes.
 
 ```bash
 finforge backtest examples/ma_cross.yaml      # needs the sample dataset (see Data below)
@@ -91,6 +128,9 @@ cancel, and fetch results and comparisons. See [`docs/server.md`](docs/server.md
 
 ## Dashboard
 
+With Docker, `docker compose up --build` runs it (see "Try it" above). To develop the dashboard
+against a local backend instead:
+
 ```bash
 python scripts/e2e_stack.py --port 8000                 # Postgres, API, worker, one-year demo dataset
 cd frontend && npm ci && NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 npm run dev
@@ -103,9 +143,11 @@ in-sample / out-of-sample split. See [`docs/dashboard.md`](docs/dashboard.md).
 ## Benchmarks
 
 ```bash
-cmake --workflow --preset release
-build/release/engine/finforge_bench --benchmark_repetitions=5 --benchmark_report_aggregates_only=true
+cmake --workflow --preset release && uv pip install -e .
+python scripts/bench.py          # C++ book and engine, Python backtests and ingest, vs PLAN targets
 ```
+
+Method, numbers and profiling recipes: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 ## Data
 
@@ -134,11 +176,11 @@ a structured report (reject / drop / flag per problem), and the dataset id is a 
 | `python/finforge/` | Python package: `sdk`, `backtest`, `config`, `strategies`, `data`, `cli` |
 | `examples/` | Backtest configs for the reference strategies |
 | `python/finforge/server/` | FastAPI app, SQLAlchemy models, Alembic migrations, job queue, worker |
-| `docker-compose.yml` | Development PostgreSQL |
+| `Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml` | The one-command stack (the `db` service alone is the development database) |
 | `frontend/` | Next.js + TypeScript dashboard (typed client generated from OpenAPI, Playwright e2e) |
 | `datasets/fixtures/` | Small synthetic test data, including malformed files |
 | `datasets/specs/` | Dataset specs for the PLAN D5 data |
-| `scripts/` | Data download, fixture generator, CI checks |
+| `scripts/` | Data download, fixture generator, benchmarks, e2e stack, CI checks |
 | `docs/` | Product docs: how the system **is** |
 
 ## License

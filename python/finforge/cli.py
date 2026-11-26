@@ -5,7 +5,7 @@
     finforge compare RUN_DIR [RUN_DIR ...] [--out DIR]
     finforge sweep examples/ma_cross_sweep.yaml [--out DIR]
     finforge data {ingest,validate,info,verify,replay} ...
-    finforge server {migrate,api,worker}         # needs the server extra and Postgres
+    finforge server {migrate,api,worker,demo}    # needs the server extra and Postgres
 
 Exit codes: 0 ok, 1 error, 2 rejected dataset (data), 3 failed backtest.
 """

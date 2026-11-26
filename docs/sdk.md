@@ -1,7 +1,8 @@
 # Python strategy SDK
 
 This page covers writing a strategy in Python, running it on a dataset, and reading what the run
-produces (PLAN.md Phase 5). The engine underneath is the one described in
+produces (PLAN.md Phase 5). New to FinForge? Start with the step-by-step
+[tutorial](tutorial.md); this page is the reference. The engine underneath is the one described in
 [execution.md](execution.md), and the data comes from [data.md](data.md).
 
 ## 1. Quick start
