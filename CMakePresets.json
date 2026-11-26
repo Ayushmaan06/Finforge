@@ -29,6 +29,14 @@
         "CMAKE_BUILD_TYPE": "Release",
         "FINFORGE_BUILD_BENCH": "ON"
       }
+    },
+    {
+      "name": "profile",
+      "displayName": "Release + frame pointers (perf --call-graph fp)",
+      "inherits": "release",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -g"
+      }
     }
   ],
   "buildPresets": [
@@ -39,6 +47,10 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "profile",
+      "configurePreset": "profile"
     }
   ],
   "testPresets": [

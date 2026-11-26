@@ -83,7 +83,7 @@ if(FINFORGE_BUILD_BENCH)
   set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googlebenchmark)
 
-  add_executable(finforge_bench bench/book_bench.cpp)
+  add_executable(finforge_bench bench/book_bench.cpp bench/mode_a_bench.cpp)
   target_link_libraries(finforge_bench PRIVATE finforge::engine benchmark::benchmark)
   target_compile_options(finforge_bench PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()

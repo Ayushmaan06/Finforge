@@ -20,6 +20,7 @@ contain a bar whose close time is after `ctx.now` (TIME-3). The arrays are read-
 guards against honest mistakes; it is not a sandbox (PLAN §4.3).
 """
 
+import weakref
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -251,7 +252,9 @@ class Context:
     """What a strategy may see and do. One per run, handed to every callback."""
 
     def __init__(self, engine: Any, registry: Registry, universe: Iterable[str], seed: int):
-        self._engine = engine
+        # Weak: the engine holds the handler (which holds this context), and Python's GC cannot see
+        # references kept inside C++ objects, so a strong one here leaked every finished run.
+        self._engine = weakref.proxy(engine)
         self._registry = registry
         self._universe = tuple(universe)
         self._inst: dict[str, Instrument] = {s: registry.by_symbol(s) for s in self._universe}

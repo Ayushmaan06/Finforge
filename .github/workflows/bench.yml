@@ -1,0 +1,30 @@
+name: Benchmarks (smoke)
+
+# PLAN §7: benchmarks run nightly or on demand, never on every push. Shared runners are noisy, so
+# this only proves the benchmarks still build and run; recorded numbers come from docs/benchmarks.md
+# (python scripts/bench.py on a known machine).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+jobs:
+  bench:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Build the engine (release, with benchmarks) and the package
+        run: |
+          cmake --workflow --preset release
+          uv venv --python 3.12
+          uv pip install -e .
+      - name: Benchmarks on the synthetic demo dataset
+        run: .venv/bin/python scripts/bench.py --quick --out bench.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench
+          path: bench.json
+          retention-days: 30
