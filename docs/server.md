@@ -104,7 +104,9 @@ the database.
 
 ## 5. Trust boundary
 
-- **Uploads:** streamed to disk with a size cap (413 when exceeded).
+- **Uploads:** a request whose `Content-Length` exceeds the cap is refused with 413 before the body
+  is read (411 without a `Content-Length`); the file's own bytes are checked against the cap again
+  as they are written to disk.
   - Their type is **sniffed from the content** (zip / Parquet magic, JSON, comma-separated UTF-8
     text). Anything else is refused with 415.
   - Uploads are stored as `<uuid>.<ext>` under a directory the server chooses. The client's

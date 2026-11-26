@@ -73,8 +73,9 @@ def split_performance(
     ts: np.ndarray, equity: np.ndarray, initial: float, split_ns: int, conv: Conventions
 ) -> dict[str, Any]:
     """Metrics before and after `split_ns`: in-sample from the initial capital, out-of-sample
-    from the equity at the split (the last point before it)."""
-    before = ts < split_ns
+    from the equity at the split. Equity is stamped at bar close, so a point at exactly
+    `split_ns` is the last in-sample bar (same boundary as the sweep: close <= holdout)."""
+    before = ts <= split_ns
     out: dict[str, Any] = {}
     is_perf = performance(ts[before], equity[before], initial, conv)
     start = float(equity[before][-1]) if before.any() else initial

@@ -193,6 +193,27 @@ def test_off_grid_orders_are_rejected_at_conversion(make_dataset, tmp_path: Path
     assert r.manifest["counts"]["sdk_rejected"] == 2
 
 
+AMEND = """
+class Amend(Strategy):
+    def on_bar(self, ctx, bar):
+        n = ctx.bars_seen(bar.symbol)
+        if n == 1:
+            self.o = ctx.submit_limit(bar.symbol, "buy", "2", "1")  # far below: never fills
+        elif n == 2:
+            ctx.amend(self.o, "1", "1")  # reduce in place
+        elif n == 3:
+            self.rest = self.o.remaining
+            self.t = ctx.target_position(bar.symbol, "1")
+"""
+
+
+def test_target_position_counts_amended_quantity(make_dataset, tmp_path: Path) -> None:
+    ds = make_dataset({"AAA": bars_from_closes([10, 10, 10, 10])})
+    s = run(config(ds, write_strategy(tmp_path, AMEND, "Amend"), {}, tmp_path)).strategy
+    assert s.rest == 1.0
+    assert s.t is None  # the open buy of 1 already reaches the target
+
+
 def test_exact_conversion_helpers() -> None:
     tick = Grid.parse("0.01")
     assert to_grid("42283.58", tick) == 4228358

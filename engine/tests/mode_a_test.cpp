@@ -203,6 +203,17 @@ TEST(Candle, AmendReduceInPlaceOrReplaceWithNewSentTime) {
     EXPECT_EQ(m.cancel(OrderId{99}).reason, RejectReason::UnknownOrder);
 }
 
+TEST(Candle, ORD7_AmendOfAWaitingMarketOrder) {
+    CandleModel m(test::make_registry());
+    const OrderId id = m.submit(market(Side::Buy, 5, 0));
+    // A price on a MARKET order is refused without changing the order.
+    EXPECT_EQ(m.amend(id, Qty{3}, Price{90}, Timestamp{1}, Timestamp{1}).reason,
+              RejectReason::InvalidPrice);
+    EXPECT_EQ(m.order(id)->status, OrderStatus::Accepted);
+    ASSERT_TRUE(m.amend(id, Qty{3}, Price{0}, Timestamp{1}, Timestamp{1}).ok());  // reduce in place
+    EXPECT_EQ(m.order(id)->remaining, Qty{3});
+}
+
 TEST(Candle, ValidationAndCancelAll) {
     CandleModel m(test::make_registry());
     EXPECT_EQ(m.order(m.submit(limit(Side::Buy, 0, 1, 0)))->reject_reason,

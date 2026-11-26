@@ -1,7 +1,7 @@
 "use client";
 
 // Time series charts with TradingView lightweight-charts (canvas). Data arrive already downsampled
-// by the API (LTTB), so each series has at most a few thousand points.
+// by the API (min/max per bucket), so each series has at most a few thousand points.
 import { useEffect, useRef } from "react";
 
 export type Point = { time: number; value: number }; // time: ns since the epoch (UTC)

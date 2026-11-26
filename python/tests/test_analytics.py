@@ -8,8 +8,9 @@ import pyarrow.parquet as pq
 import pytest
 from conftest import MINUTE_NS, T0_NS, bars_from_closes, config
 
-from finforge.analytics.compare import compare
+from finforge.analytics.compare import compare, split_performance
 from finforge.analytics.exposure import exposure, pnl_by_instrument
+from finforge.analytics.metrics import DEFAULT_CONVENTIONS
 from finforge.analytics.sweep import SweepConfig, format_results, grid_points, run_sweep
 from finforge.analytics.trades import fifo_trades, trade_summary
 from finforge.backtest import run
@@ -154,6 +155,16 @@ def test_failed_run_has_no_report(make_dataset, tmp_path: Path) -> None:
     r = run(config(ds, f"{strat}:Boom", {}, tmp_path), run_dir=tmp_path / "f")
     assert r.status == "failed"
     assert not (r.run_dir / "report.json").exists() and not (r.run_dir / "benchmark").exists()
+
+
+def test_split_point_at_the_boundary_is_in_sample() -> None:
+    # Hourly closes over two days; the bar closing exactly at the split jumps 100 -> 110.
+    hour, day = 3_600 * 10**9, 86_400 * 10**9
+    ts = np.arange(1, 49, dtype=np.int64) * hour
+    equity = np.where(ts >= day, 110.0, 100.0)
+    s = split_performance(ts, equity, 100.0, day, DEFAULT_CONVENTIONS)
+    assert s["is_total_return"] == pytest.approx(0.10)
+    assert s["oos_total_return"] == 0.0
 
 
 def test_compare_aligns_runs(two_symbols: Path, tmp_path: Path) -> None:

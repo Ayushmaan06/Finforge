@@ -20,6 +20,14 @@ void BookModel::on_hooks_changed() {
         return;
     }
     engine_.set_gate([this](const NewOrder& o) {
+        // ACC-9 on an amend replacement: the old order's cancel is already in events() but not yet
+        // reported, so its reservation and open quantity would still count. Report status updates
+        // now; on_order_update works from the order's state, so report() repeating them is a no-op.
+        for (const BookEvent& e : engine_.events()) {
+            if (const auto* u = std::get_if<OrderUpdate>(&e)) {
+                hooks_->on_order_update(*engine_.order(u->order));
+            }
+        }
         // LIMIT: fills happen at resting prices no worse than the limit, so the limit is a true
         // worst case. MARKET: the mark (no slippage in Mode B); 0 before the book has two sides.
         const Price ref =

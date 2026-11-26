@@ -149,7 +149,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Equity, drawdown and benchmark, downsampled with LTTB. */
+        /** Equity, drawdown and benchmark, downsampled (min/max per bucket). */
         get: operations["equity_runs__run_id__equity_get"];
         put?: never;
         post?: never;
@@ -183,7 +183,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Price of one instrument over the run (LTTB) with the run's fills as markers. */
+        /** Price of one instrument over the run (downsampled), the run's fills as markers. */
         get: operations["prices_runs__run_id__prices_get"];
         put?: never;
         post?: never;
@@ -425,8 +425,8 @@ export interface components {
         };
         /**
          * EquityOut
-         * @description Downsampled (LTTB) equity; the drawdown is computed on the full curve first, and the points
-         *     of the maximum drawdown and of the equity peak are always kept.
+         * @description Downsampled equity (min/max per bucket); the drawdown is computed on the full curve first,
+         *     from the initial capital, and the trough and peak of the maximum drawdown are always kept.
          */
         EquityOut: {
             /** Benchmark */

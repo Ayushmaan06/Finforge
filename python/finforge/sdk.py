@@ -121,6 +121,7 @@ class OrderHandle:
     order_id: int | None = None  # engine id; changes when an amend replaces the order
     status: str = "NEW"
     filled: float = 0.0
+    remaining: float = 0.0  # open quantity as the engine last reported it (tracks amends)
     reject_reason: str | None = None
     cancel_reason: str | None = None
 
@@ -321,6 +322,7 @@ class Context:
             qty=float(to_decimal(qty)),
             price=None if price is None else float(to_decimal(price)),
         )
+        handle.remaining = handle.qty
         reason = "OFF_TICK" if ticks is None else "OFF_LOT" if lots is None else None
         if reason is not None:  # INS-3: rejected at conversion, never reaches the engine
             handle.status, handle.reject_reason = "REJECTED", reason
@@ -360,7 +362,7 @@ class Context:
             raise ValueError(f"target {target!r} is not a whole number of lots")
         have = self.position_lots(symbol)
         for h in self.open_orders(symbol):
-            rest = to_grid(h.qty, lot) - to_grid(h.filled, lot)
+            rest = to_grid(h.remaining, lot)  # not qty - filled: an amend replaces both
             have += rest if h.side == "buy" else -rest
         diff = want - have
         if diff == 0:
@@ -483,14 +485,18 @@ class _Runner:
         self.ctx._by_id[order_id] = h
         h.status = status
         h.filled = from_grid(filled, lot)
+        h.remaining = from_grid(remaining, lot)
         h.reject_reason = None if reject == "NONE" else reject
         h.cancel_reason = None if cancel == "NONE" else cancel
         self.strategy.on_order_update(
             self.ctx,
-            OrderUpdate(
-                h, status, h.filled, from_grid(remaining, lot), h.reject_reason, h.cancel_reason
-            ),
+            OrderUpdate(h, status, h.filled, h.remaining, h.reject_reason, h.cancel_reason),
         )
+
+    def on_order_amended(self, order_id: int, qty: int, remaining: int) -> None:
+        h = self.ctx._by_id[order_id]
+        lot = self.ctx._lot[h.symbol]
+        h.qty, h.remaining = from_grid(qty, lot), from_grid(remaining, lot)
 
     def on_fill(
         self, order_id: int, trade_id: int, inst: int, side: str, price: int, qty: int, ts: int
