@@ -37,6 +37,9 @@ Decimal parse_decimal(std::string_view s, std::string_view field) {
         if (seen_point) ++d.scale;
     }
     if (s.front() == '.' || s.back() == '.') fail("decimal point needs digits on both sides");
+    // Leading zeros after the point are not significant digits but still raise the scale; an
+    // unbounded scale would overflow pow10() below (int128, UB).
+    if (d.scale > kMaxDigits) fail("more than 18 decimal places");
     return d;
 }
 
@@ -63,7 +66,7 @@ std::int64_t compute_money_per_tick_lot(std::string_view tick_size, std::string_
             throw InvalidInstrument("money_per_tick_lot does not fit int64");
         }
     } else {
-        const int128 div = pow10(-exp);  // -exp <= 28 < 38
+        const int128 div = pow10(-exp);  // scales <= 18 each, so -exp <= 28 < 38
         if (m % div != 0) {
             throw InvalidInstrument(
                 "money_per_tick_lot = tick_size × lot_size / 1e-8 is not an "

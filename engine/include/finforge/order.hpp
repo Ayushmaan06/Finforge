@@ -132,6 +132,11 @@ struct Trade {
     OwnerId resting_owner;
     Side aggressor_side = Side::Buy;
     Timestamp ts;
+    // Mode A: the market the fill was priced against, before slippage, for execution-cost
+    // analytics. Candle: the bar's open on both sides; Quote: that quote's bid and ask. 0 in
+    // Mode B. Derived, so not journaled (the DET-1 hash does not include it).
+    Price ref_bid;
+    Price ref_ask;
 
     friend bool operator==(const Trade&, const Trade&) = default;
 };

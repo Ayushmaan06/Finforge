@@ -167,6 +167,20 @@ def test_split_point_at_the_boundary_is_in_sample() -> None:
     assert s["oos_total_return"] == 0.0
 
 
+def test_compare_table_tells_infinite_from_undefined() -> None:
+    import pyarrow as pa
+
+    from finforge.analytics.compare import Comparison
+
+    rows = [
+        {"label": "no-losses", "profit_factor": None, "profit_factor_infinite": True},
+        {"label": "no-trades", "profit_factor": None, "profit_factor_infinite": False},
+    ]
+    table = Comparison(rows, pa.table({})).format_table().splitlines()
+    assert table[0].split()[-2] == "PF"  # columns: ..., PF, fees
+    assert [line.split()[-2] for line in table[1:]] == ["inf", "-"]
+
+
 def test_compare_aligns_runs(two_symbols: Path, tmp_path: Path) -> None:
     a = run(
         config(two_symbols, "momentum", {"lookback": 12, "rebalance": 4}, tmp_path),

@@ -45,7 +45,10 @@ class Comparison:
             cells = [r["label"]]
             for key, _, fmt in COLUMNS:
                 v = r.get(key)
-                cells.append("-" if v is None else fmt.format(v))
+                if v is None:  # null is either undefined ("-") or infinite (MET-5, profit factor)
+                    cells.append("inf" if r.get(f"{key}_infinite") else "-")
+                else:
+                    cells.append(fmt.format(v))
             lines.append(cells)
         widths = [max(len(row[i]) for row in lines) for i in range(len(head))]
         return "\n".join(
@@ -124,6 +127,8 @@ def compare(
                 "trades": t.get("count"),
                 "win_rate": t.get("win_rate"),
                 "profit_factor": t.get("profit_factor"),
+                "profit_factor_infinite": t.get("profit_factor_infinite", False),
+                "sortino_infinite": perf.get("sortino_infinite", False),
                 "fees": m["summary"]["total_fees"],
             }
         )

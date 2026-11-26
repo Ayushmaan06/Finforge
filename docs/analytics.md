@@ -44,8 +44,10 @@ A **trade** is one FIFO match between an opening lot and closing quantity of the
 flip).
 
 - **Gross P&L** is exact integer Money.
-- **Fees:** each fill's fee is shared among its pieces pro rata by quantity, so the trades' fees add
-  up to the total fees exactly.
+- **Fees:** each fill's fee is shared among its pieces pro rata by quantity (a float share of the
+  exact Money fee). The trades' fees therefore add up to the fees of the fills they consumed, up to
+  float rounding. They do not add up to the run's total fees when lots are still open at the end:
+  the opening fees of those lots belong to no trade yet (`open_lots`).
 - **Execution cost** = fees + the adverse difference between each fill's price and its **reference
   price**:
   - Candle model: the reference is the fill bar's open, before slippage.

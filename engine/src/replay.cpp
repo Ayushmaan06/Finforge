@@ -124,7 +124,11 @@ bool Replay::before(std::size_t a, std::size_t b) const {
     const Feed& fb = *feeds_[b];
     if (fa.time() != fb.time()) return fa.time() < fb.time();
     if (fa.instrument() != fb.instrument()) return fa.instrument() < fb.instrument();
-    return a < b;  // attach order
+    // EVT-2: feeds of one instrument are bars < quotes < trades, whatever order they were attached
+    // in (FeedKind's values are that order). Attach order only breaks ties between feeds of the
+    // same kind and instrument.
+    if (fa.kind() != fb.kind()) return fa.kind() < fb.kind();
+    return a < b;
 }
 
 bool Replay::next(MarketData& out) {

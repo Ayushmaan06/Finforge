@@ -161,6 +161,48 @@ def test_history_bounds_hold_on_quotes_too(tmp_path: Path) -> None:
     assert r.strategy.calls == 300
 
 
+BUY_ONCE = """
+class BuyOnce(Strategy):
+    def on_quote(self, ctx, quote):
+        if ctx.history(quote.symbol, "ts", kind="quotes").size == 1:
+            ctx.submit_market(quote.symbol, "buy", "0.001")
+"""
+
+
+def test_quote_fill_reference_is_the_quote_it_filled_against(tmp_path: Path) -> None:
+    # bookTicker times are ms: quotes B and C share one. The order (sent at A) fills against B,
+    # the first quote after it arrives. Before Phase 9 the analytics took the *last* quote with
+    # the fill's timestamp (C) as the reference.
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "registry.json").write_text((FIXTURES / "registry.json").read_text())
+    (src / "q.csv").write_text(
+        "update_id,best_bid_price,best_bid_qty,best_ask_price,best_ask_qty,"
+        "transaction_time,event_time\n"
+        "1,100.00,1,100.02,1,1709251200000,1709251200000\n"  # A
+        "2,100.00,1,100.02,1,1709251200001,1709251200001\n"  # B: fills here, mid 100.01
+        "3,101.00,1,101.02,1,1709251200001,1709251200001\n"  # C: same ms, mid 101.01
+    )
+    ds = tmp_path / "ds"
+    spec = {
+        "name": "q",
+        "registry": "registry.json",
+        "sources": [{"format": "binance_bookticker", "symbol": "AAA", "paths": ["q.csv"]}],
+    }
+    ingest(spec, ds, root=src)
+    r = run(
+        config(
+            ds,
+            write_strategy(tmp_path, BUY_ONCE, "BuyOnce"),
+            {},
+            tmp_path,
+            execution={"model": "quote"},
+        )
+    )
+    fills = r.read("fills").to_pylist()
+    assert [(f["price_real"], f["reference_real"]) for f in fills] == [(100.02, 100.01)]
+
+
 # --- Orders at the SDK edge ----------------------------------------------------------------------
 
 OFF_GRID = """
@@ -171,6 +213,10 @@ class OffGrid(Strategy):
             self.lot = ctx.submit_market(bar.symbol, "buy", "0.0005")           # lot 0.001
             self.ok = ctx.submit_limit(bar.symbol, "buy", 0.3, 0.1)            # floats, exact
             self.snapped = ctx.round_price(bar.symbol, "10.005", "down")
+            self.half_even = ctx.round_price(bar.symbol, "10.005")
+            self.up = ctx.round_price(bar.symbol, "10.001", "up")
+            # Just above half a tick, past Decimal's 28 digits (rounded to 10.00 before Phase 9).
+            self.above_half = ctx.round_price(bar.symbol, "10.0050000000000000000000000001")
 """
 
 
@@ -183,6 +229,11 @@ def test_off_grid_orders_are_rejected_at_conversion(make_dataset, tmp_path: Path
     assert s.ok.order_id == 1 and s.ok.status == "CANCELLED"  # rests at 0.1 until END_OF_RUN
     assert s.ok.cancel_reason == "END_OF_RUN"
     assert s.snapped == Decimal("10.00")
+    assert (s.half_even, s.up, s.above_half) == (
+        Decimal("10.00"),
+        Decimal("10.01"),
+        Decimal("10.01"),
+    )
     orders = r.read("orders").to_pylist()
     assert [(o["order_id"], o["reject_reason"]) for o in orders] == [
         (1, "NONE"),
@@ -242,6 +293,13 @@ def test_exact_conversion_helpers() -> None:
     assert to_grid(7, Grid.parse("0.5")) == 14 and to_grid("7.25", Grid.parse("0.5")) is None
     with pytest.raises(TypeError):
         to_grid(True, tick)
+    # Beyond Decimal's 28-digit context: still exact (was accepted as 5000000 before Phase 9).
+    assert to_grid("50000.000000000000000000000001", tick) is None
+    assert to_grid("50000.000000000000000000000000", tick) == 5000000
+    assert to_grid("-0.01", tick) == -1  # the engine rejects qty <= 0 (ACC-9), not this helper
+    assert to_grid("1e-999999999", tick) is None  # tiny: off grid, and returns at once
+    with pytest.raises(ValueError, match="out of range"):
+        to_grid("1e40", tick)
 
 
 # --- Failure handling (task 7) -------------------------------------------------------------------

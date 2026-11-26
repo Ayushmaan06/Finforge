@@ -43,15 +43,21 @@ class WorkingOrderModel : public ExecutionModel {
     std::vector<OrderId>& working(InstrumentId id) { return working_[id.value()]; }
     void compact(InstrumentId id);  // drops terminal orders from working(id)
 
+    // The market a fill is priced against (Trade::ref_bid / ref_ask).
+    struct Touch {
+        Price bid;
+        Price ask;
+    };
+
     // Fills `qty` of `o` at `price`: Trade, then the order's status update (hooks in between).
-    void fill(Order& o, Price price, Qty qty, Timestamp ts);
+    void fill(Order& o, Price price, Qty qty, Timestamp ts, Touch touch);
     void cancel_remaining(Order& o, CancelReason reason);
     // OP-1: lots of `wanted` a buy can pay for at `price` (all of them without accounts).
     Qty affordable(const Order& o, Price price, Qty wanted);
     // One chance for `o` to trade `available` lots at `price` (0 = the market does not cross):
     // FOK all-or-nothing, the OP-1 cash cap, the fill, then MARKET / IOC remainders cancelled
     // (GTC keeps working). Returns the lots filled.
-    Qty execute(Order& o, Price price, Qty available, Timestamp ts);
+    Qty execute(Order& o, Price price, Qty available, Timestamp ts, Touch touch);
 
     std::vector<std::optional<Price>> marks_;  // ACC-6, per instrument
     std::vector<BookEvent> events_;

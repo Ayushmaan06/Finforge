@@ -8,6 +8,7 @@ OFF_TICK / OFF_LOT.
 
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 
 import numpy as np
 import pyarrow as pa
@@ -56,12 +57,27 @@ def _np_bool(arr: pa.Array) -> np.ndarray:
     return np.asarray(arr.fill_null(False).to_numpy(zero_copy_only=False), dtype=bool)
 
 
+def _expand_exponents(column: pa.Array) -> pa.Array:
+    """Arrow casts some doubles to text in scientific notation ("1e-07", "1e+16"); rewrite those
+    rows as plain decimals so the exact parser accepts them. Only for float sources: in a text
+    source an exponent stays BAD_NUMBER (contracts INS-1)."""
+    mask = pc.fill_null(pc.match_substring(column, "e"), False)
+    if not pc.any(mask).as_py():
+        return column
+    sci = pc.filter(column, mask).to_pylist()  # rare rows: a Python loop is fine
+    plain = pa.array([format(Decimal(s), "f") for s in sci], pa.string())
+    return pc.replace_with_mask(column, mask, plain)
+
+
 def parse_scaled(column: pa.Array | pa.ChunkedArray, digits: int) -> Parsed:
     """Parse decimal text to integers in units of 10^-digits, exactly."""
     if isinstance(column, pa.ChunkedArray):
         column = column.combine_chunks()
     if not pa.types.is_string(column.type) and not pa.types.is_large_string(column.type):
+        floats = pa.types.is_floating(column.type)
         column = pc.cast(column, pa.string())
+        if floats:
+            column = _expand_exponents(column)
     s = pc.utf8_trim_whitespace(column)
     missing = _np_bool(pc.or_kleene(pc.is_null(s), pc.equal(s, "")))
 

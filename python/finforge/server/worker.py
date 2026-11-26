@@ -45,10 +45,13 @@ def _child(
         nonlocal cancel
         if os.getppid() != parent_pid:  # the worker died: stop instead of running unsupervised
             return True
-        conn.send(("progress", events, now))
-        while conn.poll():
-            if conn.recv()[0] == "cancel":
-                cancel = True
+        try:
+            conn.send(("progress", events, now))
+            while conn.poll():
+                if conn.recv()[0] == "cancel":
+                    cancel = True
+        except (EOFError, OSError):  # it died between the check above and the send: same thing.
+            return True  # (raising here would fail the run instead of cancelling it cleanly)
         return cancel
 
     try:
@@ -131,9 +134,19 @@ class Worker:
                     if dataset is not None and sim_now is not None
                     else 0.0
                 )
-                cancel = queue.heartbeat(
-                    self.engine, job.job_id, self.worker_id, s.lease_seconds, frac, events, sim_now
-                )
+                try:
+                    cancel = queue.heartbeat(
+                        self.engine,
+                        job.job_id,
+                        self.worker_id,
+                        s.lease_seconds,
+                        frac,
+                        events,
+                        sim_now,
+                    )
+                except Exception:  # a database blip: the lease outlives several missed beats
+                    log.warning("job %s: heartbeat failed; retrying", job.job_id, exc_info=True)
+                    continue
                 if cancel is None:  # the lease is gone: someone else owns the job now
                     lost = True
                     proc.kill()
@@ -150,7 +163,26 @@ class Worker:
             return
         if not done and child_error is None and proc.exitcode != 0:
             child_error = f"backtest process exited with code {proc.exitcode}"
-        status = service.finalize(
-            self.engine, job.job_id, self.worker_id, job.run_id, run_dir, child_error
-        )
+        status = self._finalize(job, run_dir, child_error)
         log.info("job %s (run %s): %s", job.job_id, job.run_id, status)
+
+    def _finalize(self, job: queue.Claimed, run_dir: Any, child_error: str | None) -> str | None:
+        """Record the result, retrying a failing database so a blip does not throw away a finished
+        run. The waits total 7/16 of the lease, so with the last heartbeat at most one beat ago
+        they end before the lease expires. finalize is one transaction guarded by the lease, so
+        a retry can never write twice."""
+        delay = self.settings.lease_seconds / 16
+        for attempt in range(4):  # waits: 1/16, 1/8, 1/4 of the lease
+            try:
+                return service.finalize(
+                    self.engine, job.job_id, self.worker_id, job.run_id, run_dir, child_error
+                )
+            except Exception:
+                if attempt == 3:
+                    raise  # the lease will expire and the reaper retries or fails the job
+                log.warning(
+                    "job %s: recording the result failed; retrying", job.job_id, exc_info=True
+                )
+                time.sleep(delay)
+                delay *= 2
+        return None

@@ -124,7 +124,7 @@ export default function CompareView() {
                     <td className="num">{signedPct(r.cagr as number)}</td>
                     <td className="num">{pct(r.volatility as number)}</td>
                     <td className="num">{num(r.sharpe as number)}</td>
-                    <td className="num">{num(r.sortino as number)}</td>
+                    <td className="num">{r.sortino_infinite ? "∞" : num(r.sortino as number)}</td>
                     <td className="num">{dd(r.max_drawdown as number)}</td>
                     <td className="num">{pct(r.var as number)}</td>
                     <td className="num">{int(r.trades as number)}</td>

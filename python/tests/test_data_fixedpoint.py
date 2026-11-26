@@ -55,6 +55,18 @@ def test_floats_go_through_their_shortest_text() -> None:
     assert p.off_grid.tolist() == [False, False, False, True]
 
 
+def test_doubles_arrow_writes_in_scientific_notation() -> None:
+    # Arrow casts these doubles to "1e-07" / "1e+16"; they are still exact, on-grid values.
+    small = parse_on_grid(pa.array([1e-7, 3e-7, 2.5e-8]), Grid.parse("0.0000001"))
+    assert small.values.tolist() == [1, 3, 0]
+    assert small.bad.tolist() == [False, False, False]
+    assert small.off_grid.tolist() == [False, False, True]  # 2.5e-8 is below the grid step
+    big = parse_on_grid(pa.array([1e16, 2.5e17]), Grid.parse("1"))
+    assert big.values.tolist() == [10**16, 25 * 10**16] and not big.bad.any()
+    # In *text* an exponent is still not a plain decimal (INS-1).
+    assert parse_scaled(pa.array(["1e-07"]), 7).bad.tolist() == [True]
+
+
 def test_random_decimals_match_python_decimal() -> None:
     rng = random.Random(7)
     texts, want = [], []

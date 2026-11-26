@@ -73,7 +73,7 @@ TEST(Candle, CND2_MarketFillsFullQtyAtOpenAsTaker) {
     const auto t = trades(m);
     ASSERT_EQ(t.size(), 1U);
     EXPECT_EQ(t[0], (Trade{TradeId{1}, kInst, Price{100}, Qty{7}, id, OrderId{0}, OwnerId{1},
-                           OwnerId{0}, Side::Sell, Timestamp{kMin}}));
+                           OwnerId{0}, Side::Sell, Timestamp{kMin}, Price{100}, Price{100}}));
     EXPECT_EQ(m.order(id)->status, OrderStatus::Filled);
     EXPECT_EQ(m.open_order_count(), 0U);
 }
@@ -214,6 +214,14 @@ TEST(Candle, ORD7_AmendOfAWaitingMarketOrder) {
     EXPECT_EQ(m.order(id)->remaining, Qty{3});
 }
 
+TEST(Candle, CND5_ParticipationAbove100PercentIsAConfigError) {
+    // Above 1, participation × volume could exceed int64 when narrowed (NUM-4).
+    EXPECT_DEATH(CandleModel(test::make_registry(), CandleConfig{.participation = Rate{1'000'001}}),
+                 "participation must be in");
+    CandleModel ok(test::make_registry(), CandleConfig{.participation = Rate{1'000'000}});
+    EXPECT_EQ(ok.open_order_count(), 0U);
+}
+
 TEST(Candle, ValidationAndCancelAll) {
     CandleModel m(test::make_registry());
     EXPECT_EQ(m.order(m.submit(limit(Side::Buy, 0, 1, 0)))->reject_reason,
@@ -256,6 +264,9 @@ TEST(QuoteModelTest, QTE1_MarketTakesTheTouchCappedBySize) {
     EXPECT_EQ(m.order(buy)->cancel_reason, CancelReason::MarketRemainder);  // 3 lots
     EXPECT_EQ(m.order(sell)->status, OrderStatus::Filled);
     EXPECT_EQ(m.mark(kInst), Price{100});  // floor((99 + 101) / 2)
+    // Each fill carries the exact quote it was priced against (execution-cost analytics).
+    for (const Trade& x : t)
+        EXPECT_EQ(std::pair(x.ref_bid, x.ref_ask), std::pair(Price{99}, Price{101}));
 }
 
 TEST(QuoteModelTest, QTE2_LimitFillsWhenTheAskReachesIt) {
@@ -301,15 +312,19 @@ TEST(QuoteModelTest, QTE3_DisplayedSizeIsConsumedOncePerOwner) {
     EXPECT_EQ(m.order(c)->filled, Qty{4});  // another owner sees the whole size
 }
 
-TEST(QuoteModelTest, EmptySideDoesNotFillAndOrderArrivingAtQuoteTimeIsEligible) {
+TEST(QuoteModelTest, QTE1_OneSidedQuotesAreSkippedAndArrivalAtQuoteTimeIsEligible) {
     QuoteModel m(test::make_registry());
     const OrderId buy = m.submit(market(Side::Buy, 1, 4));  // arrives at 5 == quote time
-    m.on_market_data(quote(5, 99, 10, 0, 0));
-    EXPECT_EQ(m.order(buy)->cancel_reason, CancelReason::MarketRemainder);
-    EXPECT_FALSE(m.mark(kInst));  // no ask, no mid
-    const OrderId buy2 = m.submit(market(Side::Buy, 1, 5));
-    m.on_market_data(quote(6, 99, 10, 101, 1));
-    EXPECT_EQ(m.order(buy2)->status, OrderStatus::Filled);
+    const OrderId ioc = m.submit(limit(Side::Buy, 101, 1, 4, Tif::Ioc));
+    const OrderId sell = m.submit(market(Side::Sell, 1, 4));
+    m.on_market_data(quote(5, 99, 10, 0, 0));  // no ask: the buys wait, the sell trades
+    EXPECT_EQ(m.order(buy)->status, OrderStatus::Accepted);
+    EXPECT_EQ(m.order(ioc)->status, OrderStatus::Accepted);
+    EXPECT_EQ(m.order(sell)->status, OrderStatus::Filled);
+    EXPECT_FALSE(m.mark(kInst));                 // no ask, no mid
+    m.on_market_data(quote(6, 99, 10, 101, 5));  // the first quote with an ask is their chance
+    EXPECT_EQ(m.order(buy)->status, OrderStatus::Filled);
+    EXPECT_EQ(m.order(ioc)->status, OrderStatus::Filled);
 }
 
 }  // namespace
