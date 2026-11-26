@@ -181,31 +181,22 @@ def _orders_table(engine: Any, ctx: Context, registry: Any) -> pa.Table:
     )
 
 
-def _reference_prices(f: dict, ctx: Context, registry: Any, model: str) -> np.ndarray:
-    """Per fill, the price before execution costs: the fill bar's open (Candle) or the mid of the
-    last quote at the fill time (Quote). NaN when unknown. Used for execution-cost analytics."""
+def _reference_prices(f: dict, registry: Any) -> np.ndarray:
+    """Per fill, the price before execution costs: the mid of the market the engine priced it
+    against (Candle: the bar's open; Quote: that exact quote, even among quotes sharing a
+    timestamp). NaN when unknown. Used for execution-cost analytics."""
+    tick = [i.tick for i in registry]
     out = np.full(len(f["ts"]), np.nan)
-    sym = [i.symbol for i in registry]
-    for k, (ts, inst) in enumerate(zip(f["ts"], f["instrument_id"], strict=True)):
-        s = sym[inst]
-        if model == "candle":
-            series = ctx._bars[s]
-            times = series.cols["ts"][: series.n]
-            j = int(np.searchsorted(times, ts))
-            if j < series.n and times[j] == ts:
-                out[k] = series.cols["open"][j]
-        else:
-            series = ctx._quotes[s]
-            times = series.cols["ts"][: series.n]
-            j = int(np.searchsorted(times, ts, side="right")) - 1
-            if j >= 0 and times[j] == ts:
-                out[k] = (series.cols["bid"][j] + series.cols["ask"][j]) / 2
+    for k, (inst, bid, ask) in enumerate(
+        zip(f["instrument_id"], f["ref_bid"], f["ref_ask"], strict=True)
+    ):
+        if bid > 0 and ask > 0:  # exact integers, one correctly rounded division (as from_grid)
+            t = tick[inst]
+            out[k] = (int(bid) + int(ask)) * t.units / (2 * 10**t.digits)
     return out
 
 
-def _fills_table(
-    engine: Any, registry: Any, ctx: Context, model: str
-) -> tuple[pa.Table, dict[str, int]]:
+def _fills_table(engine: Any, registry: Any) -> tuple[pa.Table, dict[str, int]]:
     f = engine.fills()
     sym = [i.symbol for i in registry]
     tick = [i.tick for i in registry]
@@ -234,7 +225,7 @@ def _fills_table(
                 pa.float64(),
             ),
             "fee_real": pa.array(f["fee"] / MONEY_SCALE, pa.float64()),
-            "reference_real": pa.array(_reference_prices(f, ctx, registry, model), pa.float64()),
+            "reference_real": pa.array(_reference_prices(f, registry), pa.float64()),
         }
     )
     borrow = {"charges": len(f["borrow_ts"]), "total": int(f["borrow_amount"].sum())}
@@ -401,7 +392,7 @@ def _execute(
     wall = time.perf_counter() - t0
 
     orders = _orders_table(engine, ctx, registry)
-    fills, borrow = _fills_table(engine, registry, ctx, x.model)
+    fills, borrow = _fills_table(engine, registry)
     equity = _equity_table(engine)
     exposure = _exposure_table(engine, registry, list(config.universe))
     artefacts = {}

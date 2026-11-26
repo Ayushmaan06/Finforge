@@ -192,7 +192,7 @@ class ReferenceBook {
             Order& r = all_[m->value() - 1];
             const Qty q = std::min(a.remaining, r.remaining);
             events_.push_back(Trade{TradeId{next_trade_++}, a.instrument, r.price, q, a.id, r.id,
-                                    a.owner, r.owner, a.side, a.submit_ts});
+                                    a.owner, r.owner, a.side, a.submit_ts, Price{}, Price{}});
             r.filled = r.filled + q;
             r.remaining = r.remaining - q;
             r.status = r.remaining == Qty{0} ? OrderStatus::Filled : OrderStatus::PartiallyFilled;

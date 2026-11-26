@@ -82,7 +82,9 @@ Every value is read as **text** and converted exactly. A price is never parsed a
 How each container is turned into text:
 
 - **Parquet:** numbers are cast to text first. Doubles use their shortest round-trip form, so `0.1`
-  becomes exactly 10 ticks of 0.01, never 9. Arrow `timestamp` columns take their unit from the type.
+  becomes exactly 10 ticks of 0.01, never 9. Arrow writes very small or large doubles in
+  scientific notation (`1e-07`); for float columns those are rewritten as plain decimals before
+  parsing. In text sources (CSV, JSON strings) an exponent is still `BAD_NUMBER`. Arrow `timestamp` columns take their unit from the type.
 - **JSON:** numbers keep their exact source text (`parse_float=str`).
 
 **Timestamp units (TIME-6).** The plausible ranges for 2000–2100 in seconds, milliseconds,

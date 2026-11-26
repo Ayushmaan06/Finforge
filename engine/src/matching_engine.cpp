@@ -192,7 +192,8 @@ void MatchingEngine::match(Order& aggressor, Levels& levels) {
             events_.push_back(Trade{TradeId{next_trade_id_++}, aggressor.instrument,
                                     resting.price,  // MAT-2
                                     q, aggressor.id, resting.id, aggressor.owner, resting.owner,
-                                    aggressor.side, aggressor.submit_ts});
+                                    aggressor.side, aggressor.submit_ts, Price{},
+                                    Price{}});  // no reference market in Mode B
             level.total -= q;
             resting.filled += q;
             resting.remaining -= q;

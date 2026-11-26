@@ -65,6 +65,8 @@ class Dispatcher final : public Strategy {
     void on_fill(Context& c, const Trade& t) override;
 
     std::unordered_map<std::uint64_t, std::uint64_t> client_ref;  // order id -> client ref
+    // trade id -> (ref_bid, ref_ask) of the strategy's fills: the market each was priced against.
+    std::unordered_map<std::uint64_t, std::pair<std::int64_t, std::int64_t>> touch;
 
   private:
     Backtest& bt_;
@@ -254,7 +256,7 @@ class Backtest {
     }
 
     [[nodiscard]] py::dict fills() const {
-        std::vector<std::int64_t> ts, price, qty, fee;
+        std::vector<std::int64_t> ts, price, qty, fee, ref_bid, ref_ask;
         std::vector<std::uint64_t> order, trade;
         std::vector<std::uint32_t> inst;
         std::vector<std::uint8_t> side, liq;
@@ -270,6 +272,10 @@ class Backtest {
                 qty.push_back(f->qty.value());
                 fee.push_back(f->fee.value());
                 liq.push_back(static_cast<std::uint8_t>(f->liquidity));
+                const auto it = dispatcher_.touch.find(f->trade.value());
+                const bool known = it != dispatcher_.touch.end();
+                ref_bid.push_back(known ? it->second.first : 0);
+                ref_ask.push_back(known ? it->second.second : 0);
             } else {
                 const auto& b = std::get<BorrowCharge>(e);
                 borrow_ts.push_back(b.ts.value());
@@ -286,6 +292,8 @@ class Backtest {
         d["qty"] = to_numpy(qty);
         d["fee"] = to_numpy(fee);
         d["liquidity"] = to_numpy(liq);
+        d["ref_bid"] = to_numpy(ref_bid);  // ticks; 0 = unknown
+        d["ref_ask"] = to_numpy(ref_ask);
         d["borrow_ts"] = to_numpy(borrow_ts);
         d["borrow_amount"] = to_numpy(borrow_amount);
         return d;
@@ -409,6 +417,7 @@ void Dispatcher::on_order_amended(Context& c, const OrderAmended& a) {
 }
 
 void Dispatcher::on_fill(Context& c, const Trade& t) {
+    touch[t.id.value()] = {t.ref_bid.value(), t.ref_ask.value()};
     const Backtest::Scope s(bt_, c);
     on_fill_(t.aggressor.value(), t.id.value(), t.instrument.value(),
              std::string(to_string(t.aggressor_side)), t.price.value(), t.qty.value(),

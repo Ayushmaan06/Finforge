@@ -57,7 +57,8 @@ class MarketDataSource {
     virtual bool next(MarketData& out) = 0;
 };
 
-// Merges feeds by (emit time, instrument id, attach order, row) (contracts.md §5.6). Within a feed,
+// Merges feeds by (emit time, instrument id, kind: bars < quotes < trades, attach order, row)
+// (contracts.md EVT-2). Within a feed,
 // emit times must be non-decreasing; otherwise next() throws std::invalid_argument. Feeds must all
 // be added before the first next().
 class Replay final : public MarketDataSource {

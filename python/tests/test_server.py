@@ -406,6 +406,45 @@ def test_cancelling_a_running_job(
         assert client.post(f"/runs/{rid}/cancel").status_code == 409  # already finished
 
 
+def test_a_database_blip_does_not_lose_a_run(
+    db_url: str, tmp_path: Path, long_dataset: Path, monkeypatch
+) -> None:
+    # A heartbeat and the first attempt to record the result both fail (e.g. Postgres restarts):
+    # the worker keeps going and the finished run is still recorded (Phase 9 hardening).
+    from finforge.server import service
+    from finforge.server import worker as worker_mod
+
+    def flaky(fn):
+        calls = {"n": 0}
+
+        def wrapped(*a, **k):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("database unavailable")
+            return fn(*a, **k)
+
+        return wrapped
+
+    monkeypatch.setattr(worker_mod.queue, "heartbeat", flaky(queue.heartbeat))
+    monkeypatch.setattr(worker_mod.service, "finalize", flaky(service.finalize))
+    settings = make_settings(db_url, tmp_path)
+    ds = register(settings, long_dataset)
+    with TestClient(create_app(settings)) as client:
+        rid = client.post(
+            "/runs",
+            json={
+                "dataset_id": ds,
+                "universe": ["AAA"],
+                "initial_capital": "100000",
+                "strategy": LONG,
+                "benchmark": False,
+            },
+        ).json()["id"]
+        assert Worker(settings).run_once()
+        run = client.get(f"/runs/{rid}").json()
+        assert run["status"] == "completed" and run["job"]["attempts"] == 1
+
+
 def _worker_process(settings: Settings) -> subprocess.Popen:
     env = {
         **os.environ,

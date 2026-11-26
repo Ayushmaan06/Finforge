@@ -86,6 +86,9 @@ finforge server worker                           # runs queued backtests
 Upload data, register datasets, queue runs of the built-in strategies, follow progress over SSE,
 cancel, and fetch results and comparisons. See [`docs/server.md`](docs/server.md).
 
+> The service has no authentication: it is a local research tool and listens on 127.0.0.1 only.
+> Do not expose it to a network without an authenticating proxy in front.
+
 ## Dashboard
 
 ```bash

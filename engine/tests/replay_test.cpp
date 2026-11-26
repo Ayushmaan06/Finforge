@@ -118,15 +118,16 @@ TEST(Replay, MergesByTimeThenInstrumentThenAttachOrderThenRow) {
     EXPECT_EQ(r.emitted(FeedKind::Quotes), 8U);
 }
 
-TEST(Replay, SameInstrumentTiesFollowAttachOrder) {
-    // A bar closing at 60 and a quote at 60 for the same instrument: bars feed attached first.
+TEST(Replay, EVT2_SameInstrumentTiesAreBarsThenQuotesThenTrades) {
+    // A bar closing at 60, a quote and a trade at 60 for the same instrument. Attached in the
+    // reverse order on purpose: the kind decides, not the attach order.
     VectorProvider bars({{0}, {60}, {7}, {9}, {6}, {8}, {3}}, {1000});
     auto q = quotes({60});
     VectorProvider trades({{60}, {55}, {4}}, {1000}, {-1});
     Replay r;
-    r.add_feed(FeedKind::Bars, InstrumentId{0}, bars);
-    r.add_feed(FeedKind::Quotes, InstrumentId{0}, q);
     r.add_feed(FeedKind::Trades, InstrumentId{0}, trades);
+    r.add_feed(FeedKind::Quotes, InstrumentId{0}, q);
+    r.add_feed(FeedKind::Bars, InstrumentId{0}, bars);
     MarketData md;
     ASSERT_TRUE(r.next(md));
     const Bar& b = std::get<Bar>(md);

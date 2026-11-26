@@ -20,11 +20,13 @@ contain a bar whose close time is after `ctx.now` (TIME-3). The arrays are read-
 guards against honest mistakes; it is not a sandbox (PLAN §4.3).
 """
 
+import math
 import weakref
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 from typing import Any, ClassVar
 
 import numpy as np
@@ -65,13 +67,21 @@ def to_decimal(value: Any) -> Decimal:
     return d
 
 
+def _steps(value: Any, grid: Grid) -> Fraction:
+    """`value` in grid steps, exactly. Decimal arithmetic would round at its 28-digit context
+    (Phase 9: "50000.000000000000000000000001" passed as on-tick), so this uses Fractions."""
+    d = to_decimal(value)
+    if d and d.adjusted() > 30:  # beyond int64 in any grid
+        raise ValueError(f"{value!r} is out of range")
+    if d and d.adjusted() < -64:  # below any grid step: same result as the value itself, and
+        d = Decimal(1).scaleb(-64).copy_sign(d)  # Fraction(1e-999999999) would never finish
+    return Fraction(d) * 10**grid.digits / grid.units
+
+
 def to_grid(value: Any, grid: Grid) -> int | None:
     """Whole grid steps of `value`, or None when it is not on the grid."""
-    scaled = to_decimal(value).scaleb(grid.digits)
-    if scaled != scaled.to_integral_value():
-        return None
-    q, r = divmod(int(scaled), grid.units)
-    return q if r == 0 else None
+    s = _steps(value, grid)
+    return s.numerator if s.denominator == 1 else None
 
 
 def from_grid(steps: int, grid: Grid) -> float:
@@ -376,11 +386,8 @@ class Context:
     def round_price(self, symbol: str, price: Any, mode: str = "nearest") -> Decimal:
         """`price` snapped to the tick grid ("nearest", "down" or "up"), as an exact Decimal."""
         tick = self._tick[symbol]
-        steps = to_decimal(price).scaleb(tick.digits) / tick.units
-        rounding = {"nearest": "ROUND_HALF_EVEN", "down": "ROUND_FLOOR", "up": "ROUND_CEILING"}[
-            mode
-        ]
-        whole = int(steps.to_integral_value(rounding=rounding))
+        snap = {"nearest": round, "down": math.floor, "up": math.ceil}[mode]  # round(): half-even
+        whole = snap(_steps(price, tick))
         return Decimal(whole * tick.units).scaleb(-tick.digits)
 
     # --- account ---

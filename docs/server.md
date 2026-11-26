@@ -104,6 +104,10 @@ the database.
 
 ## 5. Trust boundary
 
+- **Localhost only.** There is no authentication or user model (out of scope for v1): anyone who
+  can reach the API can upload data and run backtests. Everything listens on 127.0.0.1 by default
+  (`finforge server api --host`, the compose ports), and CORS allows only the local dashboard
+  origins (`FINFORGE_CORS_ORIGINS`). Put an authenticating proxy in front before exposing it.
 - **Uploads:** a request whose `Content-Length` exceeds the cap is refused with 413 before the body
   is read (411 without a `Content-Length`); the file's own bytes are checked against the cap again
   as they are written to disk.

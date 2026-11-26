@@ -161,7 +161,8 @@ ORD-8 and MAT-5/7/8 after every operation; all under ASan/UBSan.
 - **EVT-2** Multi-instrument data with equal timestamps is merged by `instrument_id`, then source row
   order (deterministic k-way merge). **(refinement:** the merge key is `(emit time, instrument_id,
   feed, row)`, where a feed is one (kind, instrument) file and feeds of one instrument are ordered
-  bars < quotes < trades. Replay streams the merged data into the queue one event at a time, so at
+  bars < quotes < trades, enforced by the replay itself, not by the order feeds are attached
+  in. Replay streams the merged data into the queue one event at a time, so at
   equal `(ts, class, instrument_id)` the merge order is the processing order.)
 - **EVT-3** An order submitted while handling an event at time `t` arrives at the execution model at
   `t + latency`. Default `latency = 1 ns`, configurable, MUST be ≥ 1 ns. Therefore an order can never
@@ -196,7 +197,7 @@ its parameters.
   on their first eligible bar only, then any remainder is cancelled `IOC_REMAINDER`; FOK fills completely
   on its first eligible bar or is cancelled `FOK_UNFILLABLE` with no fill.
 - **CND-5** Optional volume cap, off by default: `fill_qty ≤ floor(participation × volume[t+1])` lots,
-  `participation` a `Rate`. The cap is shared by all of the strategy's orders on that instrument and bar,
+  `participation` a `Rate` in [0, 1]. The cap is shared by all of the strategy's orders on that instrument and bar,
   allocated in order `seq`. **(refinement)**
 - **CND-6** No native stops in v1.
 - **CND-7** All Candle fills are taker fills.
@@ -204,7 +205,9 @@ its parameters.
 ### 7.2 QuoteModel (L1 bid/ask)
 
 - **QTE-1** A MARKET BUY fills at the first ask with timestamp ≥ arrival, quantity capped at that
-  quote's ask size; the remainder is cancelled (ORD-6). SELL mirrors against the bid.
+  quote's ask size; the remainder is cancelled (ORD-6). SELL mirrors against the bid. A quote
+  whose needed side is empty (price or size 0) is not a chance: the order waits for the next quote
+  that has that side. This applies to the "first quote" of IOC / FOK in QTE-2 too. **(Phase 9)**
 - **QTE-2** A LIMIT BUY fills when a quote has `ask ≤ limit`, at the ask, capped at the ask size.
   GTC remainders keep working on later quotes; IOC is evaluated on the first quote at or after arrival
   only; FOK fills completely on that quote or is cancelled. SELL mirrors with `bid ≥ limit`.
@@ -342,7 +345,8 @@ Computed in Python from the engine's exported arrays (PLAN D1).
 - **MET-4** Sharpe = `mean(excess) / std(excess, ddof=1) × √N`. Undefined (reported as null with a
   flag) if std = 0 or fewer than 2 periods.
 - **MET-5** Sortino = `mean(excess) / downside_dev × √N`, `downside_dev = √(mean(min(r, 0)²))` over all
-  periods. Infinite (flagged) if downside_dev = 0.
+  periods. If downside_dev = 0: infinite (null, flagged `sortino_infinite`) when mean(excess) > 0,
+  otherwise undefined (null, not flagged).
 - **MET-6** Volatility = `std(r, ddof=1) × √N`.
 - **MET-7** Max drawdown = largest `(peak − trough) / peak` of the equity curve, reported as a positive
   fraction, with its duration (peak to recovery, or to the end if not recovered).

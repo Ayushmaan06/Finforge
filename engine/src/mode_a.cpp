@@ -136,7 +136,7 @@ void WorkingOrderModel::set_status(Order& o, OrderStatus to) {
     if (hooks_ != nullptr) hooks_->on_order_update(o);
 }
 
-void WorkingOrderModel::fill(Order& o, Price price, Qty qty, Timestamp ts) {
+void WorkingOrderModel::fill(Order& o, Price price, Qty qty, Timestamp ts, Touch touch) {
     FINFORGE_CHECK(qty > Qty{0} && qty <= o.remaining, "fill quantity out of range");
     FINFORGE_CHECK(price > Price{0}, "fill price must be positive");
     // Mode A fills have no resting order: resting id and owner are 0. All are taker (CND-7, QTE-4).
@@ -149,7 +149,9 @@ void WorkingOrderModel::fill(Order& o, Price price, Qty qty, Timestamp ts) {
                   o.owner,
                   OwnerId{0},
                   o.side,
-                  ts};
+                  ts,
+                  touch.bid,
+                  touch.ask};
     events_.push_back(t);
     if (hooks_ != nullptr) hooks_->on_fill(o, t, Liquidity::Taker);
     o.filled += qty;
@@ -169,7 +171,7 @@ Qty WorkingOrderModel::affordable(const Order& o, Price price, Qty wanted) {
     return std::min(hooks_->affordable(o, price, wanted), wanted);
 }
 
-Qty WorkingOrderModel::execute(Order& o, Price price, Qty available, Timestamp ts) {
+Qty WorkingOrderModel::execute(Order& o, Price price, Qty available, Timestamp ts, Touch touch) {
     const bool fok = o.type == OrderType::Limit && o.tif == Tif::Fok;
     const Qty want = std::min(available, o.remaining);
     if (fok && want < o.remaining) {  // CND-4, QTE-2: all or nothing, on the first chance
@@ -183,11 +185,11 @@ Qty WorkingOrderModel::execute(Order& o, Price price, Qty available, Timestamp t
                 cancel_remaining(o, CancelReason::InsufficientCashAtFill);
                 return Qty{0};
             }
-            if (can > Qty{0}) fill(o, price, can, ts);
+            if (can > Qty{0}) fill(o, price, can, ts, touch);
             cancel_remaining(o, CancelReason::InsufficientCashAtFill);
             return can;
         }
-        fill(o, price, want, ts);
+        fill(o, price, want, ts, touch);
     }
     if (!is_terminal(o.status)) {
         if (o.type == OrderType::Market) {
@@ -222,7 +224,9 @@ Price Slippage::apply(Price price, Side side) const {
 
 CandleModel::CandleModel(InstrumentRegistry registry, CandleConfig config)
     : WorkingOrderModel(std::move(registry)), config_(config) {
-    FINFORGE_CHECK(config_.participation >= Rate{0}, "participation must be >= 0");
+    // At most 100 % of the bar's volume: also keeps participation × volume within int64 (NUM-4).
+    FINFORGE_CHECK(config_.participation >= Rate{0} && config_.participation <= Rate{1'000'000},
+                   "participation must be in [0, 1]");
     FINFORGE_CHECK(config_.slippage.rate >= Rate{0} && config_.slippage.rate < Rate{1'000'000},
                    "slippage rate must be in [0, 1)");
 }
@@ -238,7 +242,8 @@ void CandleModel::on_market_data(const MarketData& md) {
     if (bar == nullptr || bar->instrument.value() >= marks_.size()) return;
     marks_[bar->instrument.value()] = bar->close;  // ACC-6
 
-    // CND-5: one volume budget per owner for this bar, used in seq order.
+    // CND-5: one volume budget per owner for this bar, used in seq order. participation <= 1, so
+    // the cap is <= the bar's volume and the narrowing below cannot overflow.
     const bool capped = config_.participation > Rate{0};
     const Qty cap{static_cast<std::int64_t>(static_cast<int128>(config_.participation.value()) *
                                             bar->volume.value() / 1'000'000)};
@@ -264,7 +269,7 @@ void CandleModel::on_market_data(const MarketData& md) {
         }
         Qty available = crosses ? o.remaining : Qty{0};
         if (capped) available = std::min(available, cap - used[o.owner]);
-        used[o.owner] += execute(o, price, available, bar->close_time);
+        used[o.owner] += execute(o, price, available, bar->close_time, {bar->open, bar->open});
     }
     compact(bar->instrument);
 }
@@ -294,21 +299,24 @@ void QuoteModel::on_market_data(const MarketData& md) {
         Order& o = at(id);
         // QTE-1: the first quote at or after arrival. Working orders arrived at or before now.
         FINFORGE_CHECK(o.submit_ts <= q->ts, "working order from the future");
+        // QTE-1: the order's chance is the first quote that *has* the side it trades against. A
+        // one-sided quote is skipped, so MARKET / IOC / FOK orders are not cancelled by it.
+        if (!(o.side == Side::Buy ? has_ask : has_bid)) continue;
         auto& [ask_used, bid_used] = used[o.owner];
         Qty available{0};
         Price price;
         if (o.side == Side::Buy) {
             price = q->ask;
-            if (has_ask && (o.type == OrderType::Market || q->ask <= o.price)) {  // QTE-2
+            if (o.type == OrderType::Market || q->ask <= o.price) {  // QTE-2
                 available = q->ask_qty - ask_used;
             }
-            ask_used += execute(o, price, available, q->ts);
+            ask_used += execute(o, price, available, q->ts, {q->bid, q->ask});
         } else {
             price = q->bid;
-            if (has_bid && (o.type == OrderType::Market || q->bid >= o.price)) {
+            if (o.type == OrderType::Market || q->bid >= o.price) {
                 available = q->bid_qty - bid_used;
             }
-            bid_used += execute(o, price, available, q->ts);
+            bid_used += execute(o, price, available, q->ts, {q->bid, q->ask});
         }
     }
     compact(q->instrument);

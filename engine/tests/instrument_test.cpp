@@ -24,6 +24,14 @@ TEST(Instrument, NUM2_RejectsNonIntegerOrTooSmall) {
 TEST(Instrument, NUM2_RejectsOutOfRange) {
     EXPECT_THROW(compute_money_per_tick_lot("999999999999999999", "999999999999999999"),
                  InvalidInstrument);
+    // Leading zeros raise the scale without counting as significant digits: 19 and 60 decimal
+    // places must be refused, not overflow pow10 (int128 UB before Phase 9).
+    EXPECT_THROW(compute_money_per_tick_lot("0.0000000000000000001", "1"), InvalidInstrument);
+    EXPECT_THROW(compute_money_per_tick_lot(
+                     "0.000000000000000000000000000000000000000000000000000000000001", "1"),
+                 InvalidInstrument);
+    // Exactly 18 places is still fine: 1e-18 × 1e10 = 1e-8 = one Money unit.
+    EXPECT_EQ(compute_money_per_tick_lot("0.000000000000000001", "10000000000"), 1);
 }
 
 TEST(Instrument, INS1_RejectsMalformedDecimals) {
