@@ -6,6 +6,11 @@
 #include <cstring>
 #include <string>
 
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+#include <cpuid.h>
+#include <immintrin.h>
+#endif
+
 namespace finforge {
 namespace {
 
@@ -32,6 +37,79 @@ void Sha256::reset() {
 }
 
 void Sha256::block(const std::uint8_t* p) {
+    static const bool hw = detail::sha256_hw_available();
+    if (hw) {
+        detail::sha256_block_hw(h_, p);
+    } else {
+        detail::sha256_block_portable(h_, p);
+    }
+}
+
+namespace detail {
+
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+
+bool sha256_hw_available() {
+    unsigned a = 0, b = 0, c = 0, d = 0;
+    if (__get_cpuid(1, &a, &b, &c, &d) == 0) return false;
+    const bool ssse3 = (c & (1u << 9u)) != 0, sse41 = (c & (1u << 19u)) != 0;
+    if (__get_cpuid_count(7, 0, &a, &b, &c, &d) == 0) return false;
+    return ssse3 && sse41 && (b & (1u << 29u)) != 0;  // CPUID.7.0:EBX[29] = SHA
+}
+
+// Intel SHA extensions: sha256rnds2 does two rounds on state kept as ABEF/CDGH; msg1/msg2 do the
+// message schedule four words at a time:
+// W[i] = msg2(msg1(W[i-4], W[i-3]) + alignr(W[i-1], W[i-2], 4), W[i-1]).
+__attribute__((target("sha,sse4.1,ssse3"))) void sha256_block_hw(std::array<std::uint32_t, 8>& h,
+                                                                 const std::uint8_t* p) {
+    const __m128i bswap = _mm_set_epi64x(0x0c0d0e0f08090a0bLL, 0x0405060700010203LL);
+    __m128i tmp = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&h[0]));
+    __m128i state1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&h[4]));
+    tmp = _mm_shuffle_epi32(tmp, 0xB1);                // CDAB
+    state1 = _mm_shuffle_epi32(state1, 0x1B);          // EFGH
+    __m128i state0 = _mm_alignr_epi8(tmp, state1, 8);  // ABEF
+    state1 = _mm_blend_epi16(state1, tmp, 0xF0);       // CDGH
+    const __m128i abef = state0, cdgh = state1;
+
+    __m128i w[4];  // NOLINT: std::array<__m128i> drops the vector type's alignment attribute
+    for (std::size_t i = 0; i < 16; ++i) {
+        __m128i& cur = w[i % 4];
+        if (i < 4) {
+            cur = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(p + 16 * i)),
+                                   bswap);
+        } else {
+            const __m128i& w1 = w[(i - 1) % 4];
+            const __m128i s = _mm_add_epi32(_mm_sha256msg1_epu32(cur, w[(i - 3) % 4]),
+                                            _mm_alignr_epi8(w1, w[(i - 2) % 4], 4));
+            cur = _mm_sha256msg2_epu32(s, w1);
+        }
+        __m128i msg =
+            _mm_add_epi32(cur, _mm_loadu_si128(reinterpret_cast<const __m128i*>(&kK[4 * i])));
+        state1 = _mm_sha256rnds2_epu32(state1, state0, msg);
+        msg = _mm_shuffle_epi32(msg, 0x0E);
+        state0 = _mm_sha256rnds2_epu32(state0, state1, msg);
+    }
+
+    state0 = _mm_add_epi32(state0, abef);
+    state1 = _mm_add_epi32(state1, cdgh);
+    tmp = _mm_shuffle_epi32(state0, 0x1B);        // FEBA
+    state1 = _mm_shuffle_epi32(state1, 0xB1);     // DCHG
+    state0 = _mm_blend_epi16(tmp, state1, 0xF0);  // DCBA
+    state1 = _mm_alignr_epi8(state1, tmp, 8);     // HGFE
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(&h[0]), state0);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(&h[4]), state1);
+}
+
+#else
+
+bool sha256_hw_available() { return false; }
+void sha256_block_hw(std::array<std::uint32_t, 8>& h, const std::uint8_t* p) {
+    sha256_block_portable(h, p);
+}
+
+#endif
+
+void sha256_block_portable(std::array<std::uint32_t, 8>& h_, const std::uint8_t* p) {
     std::array<std::uint32_t, 64> w{};
     for (std::size_t i = 0; i < 16; ++i) {
         w[i] = (std::uint32_t{p[4 * i]} << 24u) | (std::uint32_t{p[4 * i + 1]} << 16u) |
@@ -69,6 +147,8 @@ void Sha256::block(const std::uint8_t* p) {
     h_[6] += g;
     h_[7] += h;
 }
+
+}  // namespace detail
 
 void Sha256::update(std::span<const std::uint8_t> data) {
     total_len_ += data.size();

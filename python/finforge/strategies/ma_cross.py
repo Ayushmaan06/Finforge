@@ -40,8 +40,11 @@ class MovingAverageCrossover(Strategy):
         close = ctx.history(bar.symbol, "close", self.slow + 1)
         if len(close) < self.slow + 1:
             return
-        fast_now, fast_prev = close[-self.fast :].mean(), close[-self.fast - 1 : -1].mean()
-        slow_now, slow_prev = close[-self.slow :].mean(), close[-self.slow - 1 : -1].mean()
+        # sum()/n is bit-identical to mean() and 2.5x faster on short windows: mean()'s Python-level
+        # wrapper was ~45 % of a whole backtest (Phase 9 profile).
+        f, s = self.fast, self.slow
+        fast_now, fast_prev = close[-f:].sum() / f, close[-f - 1 : -1].sum() / f
+        slow_now, slow_prev = close[-s:].sum() / s, close[-s - 1 : -1].sum() / s
         position = ctx.position(bar.symbol)
         if fast_prev <= slow_prev and fast_now > slow_now and position == 0:
             ctx.submit_market(bar.symbol, "buy", self.params["qty"])

@@ -37,4 +37,14 @@ class Sha256 {
     std::uint64_t total_len_ = 0;  // bytes
 };
 
+// The compression function, one 64-byte block into `h`. Sha256 uses the x86 SHA extensions when
+// the CPU has them (Phase 9: hashing was 55 % of a no-op backtest) and the portable code
+// otherwise. Both are exposed so tests can check they agree on every machine.
+namespace detail {
+void sha256_block_portable(std::array<std::uint32_t, 8>& h, const std::uint8_t* p);
+[[nodiscard]] bool sha256_hw_available();
+// Precondition: sha256_hw_available().
+void sha256_block_hw(std::array<std::uint32_t, 8>& h, const std::uint8_t* p);
+}  // namespace detail
+
 }  // namespace finforge

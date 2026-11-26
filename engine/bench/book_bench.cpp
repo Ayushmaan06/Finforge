@@ -4,6 +4,8 @@
 
 #include <benchmark/benchmark.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <random>
 #include <vector>
@@ -148,6 +150,53 @@ void run(benchmark::State& state, const std::vector<Op>& ops) {
         static_cast<double>(trades) / static_cast<double>(state.iterations() * ops.size());
 }
 
+// Per-add latency (PLAN §10: p99 add < 2 µs). Each submit is timed with steady_clock; the median
+// cost of an empty timing pair is subtracted. Cancels run untimed so the book evolves as in the
+// throughput stream. Percentiles are over every add of every iteration, in ns.
+void latency(benchmark::State& state, const std::vector<Op>& ops) {
+    using Clock = std::chrono::steady_clock;
+    std::vector<std::int64_t> overhead(10'000);
+    for (auto& o : overhead) {
+        const auto t0 = Clock::now();
+        const auto t1 = Clock::now();
+        o = (t1 - t0).count();
+    }
+    std::ranges::nth_element(overhead, overhead.begin() + 5'000);
+    const std::int64_t base = overhead[5'000];
+
+    std::vector<std::int64_t> ns;
+    for (auto _ : state) {
+        MatchingEngine eng(registry());
+        for (const Op& op : ops) {
+            if (op.is_cancel) {
+                benchmark::DoNotOptimize(eng.cancel(op.cancel_id));
+                continue;
+            }
+            const auto t0 = Clock::now();
+            benchmark::DoNotOptimize(eng.submit(op.order));
+            const auto t1 = Clock::now();
+            ns.push_back((t1 - t0).count() - base);
+        }
+    }
+    std::ranges::sort(ns);
+    const auto at = [&](std::size_t permille) {
+        return static_cast<double>(ns[std::min(ns.size() - 1, ns.size() * permille / 1000)]);
+    };
+    state.counters["p50_ns"] = at(500);
+    state.counters["p99_ns"] = at(990);
+    state.counters["p999_ns"] = at(999);
+    state.counters["timer_ns"] = static_cast<double>(base);
+}
+
+void BM_AddLatency_AddHeavy(benchmark::State& s) {
+    static const auto ops = add_heavy();
+    latency(s, ops);
+}
+void BM_AddLatency_Mixed(benchmark::State& s) {  // includes aggressive adds that match
+    static const auto ops = mixed();
+    latency(s, ops);
+}
+
 void BM_AddHeavy(benchmark::State& s) {
     static const auto ops = add_heavy();
     run(s, ops);
@@ -171,5 +220,7 @@ BENCHMARK(BM_AddHeavy)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_CancelHeavy)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_MatchHeavy)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_Mixed)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_AddLatency_AddHeavy)->Unit(benchmark::kMillisecond)->Iterations(5);
+BENCHMARK(BM_AddLatency_Mixed)->Unit(benchmark::kMillisecond)->Iterations(5);
 
 BENCHMARK_MAIN();

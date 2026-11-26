@@ -214,6 +214,26 @@ def test_target_position_counts_amended_quantity(make_dataset, tmp_path: Path) -
     assert s.t is None  # the open buy of 1 already reaches the target
 
 
+KEEP_CTX = """
+import weakref
+
+class KeepCtx(Strategy):
+    def on_start(self, ctx):
+        self.ctx_ref = weakref.ref(ctx)
+"""
+
+
+def test_a_finished_run_frees_its_engine(make_dataset, tmp_path: Path) -> None:
+    # engine -> handler -> context -> engine was a cycle through a C++ member, which Python's GC
+    # cannot collect: every run leaked its engine (Phase 9: ~470 MiB per run on 2 M bars).
+    import gc
+
+    ds = make_dataset({"AAA": bars_from_closes([10, 11, 12])})
+    r = run(config(ds, write_strategy(tmp_path, KEEP_CTX, "KeepCtx"), {}, tmp_path))
+    gc.collect()
+    assert r.strategy.ctx_ref() is None
+
+
 def test_exact_conversion_helpers() -> None:
     tick = Grid.parse("0.01")
     assert to_grid("42283.58", tick) == 4228358

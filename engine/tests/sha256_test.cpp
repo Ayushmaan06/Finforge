@@ -45,6 +45,26 @@ TEST(Sha256, ChunkingDoesNotMatter) {
     }
 }
 
+// The hardware path is what runs on most machines; the portable one must still be right (and is
+// what the NIST vectors above exercise on CPUs without SHA extensions).
+TEST(Sha256, HardwareAndPortableBlocksAgree) {
+    if (!detail::sha256_hw_available()) GTEST_SKIP() << "no SHA extensions on this CPU";
+    std::array<std::uint32_t, 8> hw{0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+                                    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+    std::array<std::uint32_t, 8> portable = hw;
+    std::array<std::uint8_t, 64> block{};
+    std::uint64_t x = 0x9e3779b97f4a7c15;  // splitmix-style stream: varied, reproducible bytes
+    for (int n = 0; n < 10'000; ++n) {
+        for (auto& b : block) {
+            x = x * 6364136223846793005u + 1442695040888963407u;
+            b = static_cast<std::uint8_t>(x >> 56u);
+        }
+        detail::sha256_block_hw(hw, block.data());
+        detail::sha256_block_portable(portable, block.data());
+        ASSERT_EQ(hw, portable) << "block " << n;
+    }
+}
+
 TEST(Sha256, DigestMidStreamDoesNotDisturbState) {
     Sha256 h;
     h.update("ab");
